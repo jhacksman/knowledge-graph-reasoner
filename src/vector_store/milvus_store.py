@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, AsyncIterator
 import asyncio
 import json
 import numpy as np
-from pymilvus import MilvusClient, DataType
+from pymilvus import MilvusClient, DataType  # type: ignore
 
 from .base import BaseVectorStore
 from .exceptions import MilvusError, CollectionInitError, SearchError
