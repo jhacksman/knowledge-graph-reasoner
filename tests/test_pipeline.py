@@ -33,11 +33,27 @@ def mock_llm():
         "What is deep learning?",
         "How does it work?"
     ])
-    llm.reason_over_context = AsyncMock(return_value="""
-    Deep learning is a subset of machine learning.
-    It uses neural networks with multiple layers.
-    These networks learn hierarchical representations of data.
-    """)
+    llm.reason_over_context = AsyncMock(return_value="""{
+        "nodes": [
+            {"content": "Deep learning", "metadata": {"type": "concept"}},
+            {"content": "Machine learning", "metadata": {"type": "concept"}},
+            {"content": "Neural networks", "metadata": {"type": "technology"}}
+        ],
+        "edges": [
+            {
+                "source": "Deep learning",
+                "target": "Machine learning",
+                "type": "is_subset_of",
+                "metadata": {}
+            },
+            {
+                "source": "Deep learning",
+                "target": "Neural networks",
+                "type": "uses",
+                "metadata": {}
+            }
+        ]
+    }""")
     llm.embed_text = AsyncMock(return_value=np.array([0.1, 0.2, 0.3, 0.4]))
     return llm
 
@@ -114,3 +130,45 @@ async def test_expand_graph_iteratively(pipeline):
         assert isinstance(result, KnowledgeExpansionResult)
         assert result.query_decomposition
         assert result.final_reasoning
+
+
+@pytest.mark.asyncio
+async def test_expand_graph_parallel(pipeline, mock_llm):
+    """Test parallel graph expansion."""
+    # Setup mock responses for initial query
+    mock_llm.decompose_query = AsyncMock(return_value=["What is deep learning?"])
+    
+    # Setup mock responses for knowledge extraction and gap queries
+    mock_llm.reason_over_context = AsyncMock()
+    mock_llm.reason_over_context.side_effect = [
+        # Initial query reasoning
+        '{"nodes": [{"content": "Deep learning", "metadata": {"type": "concept"}}], "edges": [{"source": "Deep learning", "target": "Neural networks", "type": "uses", "metadata": {}}]}',
+        # Gap query generation
+        '["What is backpropagation?"]',
+        # Gap query reasoning
+        '{"nodes": [{"content": "Backpropagation", "metadata": {"type": "concept"}}], "edges": [{"source": "Backpropagation", "target": "Deep learning", "type": "enables", "metadata": {}}]}'
+    ]
+    
+    # Mock embedding generation
+    mock_llm.embed_text = AsyncMock(return_value=np.array([0.1, 0.2, 0.3, 0.4]))
+    
+    # Execute parallel expansion
+    results = await pipeline.expand_graph_parallel(
+        query="Explain deep learning",
+        max_iterations=2
+    )
+    
+    # Verify results structure
+    assert isinstance(results, list)
+    assert len(results) > 0
+    assert isinstance(results[0], KnowledgeExpansionResult)
+    
+    # Verify knowledge extraction
+    assert len(results[0].new_nodes) > 0
+    assert len(results[0].new_edges) > 0
+    assert any("Deep learning" in node.content for node in results[0].new_nodes)
+    
+    # Verify LLM interactions
+    assert mock_llm.decompose_query.call_count == 1  # Initial decomposition
+    assert mock_llm.reason_over_context.call_count == 3  # Initial + gap + expansion
+    assert mock_llm.embed_text.call_count > 0  # Node embeddings

@@ -1,6 +1,7 @@
 """Main reasoning pipeline for knowledge graph expansion."""
 from typing import Dict, List, Optional, Tuple
 import asyncio
+import json
 from pydantic import BaseModel
 
 from ..vector_store.milvus_store import MilvusGraphStore
@@ -56,29 +57,45 @@ class ReasoningPipeline:
         Format your response as valid JSON:
         """
         
-        extraction = await self.llm.reason_over_context(prompt, [reasoning])
         try:
-            structured = json.loads(extraction)
+            # Try to parse input as JSON first
+            try:
+                structured = json.loads(reasoning)
+                if isinstance(structured, dict) and "nodes" in structured and "edges" in structured:
+                    # Input is already structured, use it directly
+                    pass
+                else:
+                    raise ValueError("Invalid JSON format")
+            except json.JSONDecodeError:
+                # Input is raw text, extract knowledge using LLM
+                extraction = await self.llm.reason_over_context(prompt, [reasoning])
+                structured = json.loads(extraction)
+                if not isinstance(structured, dict) or "nodes" not in structured or "edges" not in structured:
+                    raise ValueError("Invalid extraction format")
             
-            nodes = [
-                Node(
-                    id=f"node_{i}_{hash(n['content'])}", 
-                    content=n["content"],
-                    embedding=await self.llm.embed_text(n["content"]),
-                    metadata=n.get("metadata", {})
-                )
-                for i, n in enumerate(structured["nodes"])
-            ]
+            # Create nodes with embeddings
+            nodes = []
+            for i, node_data in enumerate(structured.get("nodes", [])):
+                if not isinstance(node_data, dict) or "content" not in node_data:
+                    continue
+                nodes.append(Node(
+                    id=f"node_{i}_{hash(node_data['content'])}",
+                    content=node_data["content"],
+                    embedding=await self.llm.embed_text(node_data["content"]),
+                    metadata=node_data.get("metadata", {})
+                ))
             
-            edges = [
-                Edge(
-                    source=f"node_{i}_{hash(e['source'])}",
-                    target=f"node_{i}_{hash(e['target'])}",
-                    type=e["type"],
-                    metadata=e.get("metadata", {})
-                )
-                for i, e in enumerate(structured["edges"])
-            ]
+            # Create edges
+            edges = []
+            for i, edge_data in enumerate(structured.get("edges", [])):
+                if not isinstance(edge_data, dict) or not all(k in edge_data for k in ["source", "target", "type"]):
+                    continue
+                edges.append(Edge(
+                    source=f"node_{i}_{hash(edge_data['source'])}",
+                    target=f"node_{i}_{hash(edge_data['target'])}",
+                    type=edge_data["type"],
+                    metadata=edge_data.get("metadata", {})
+                ))
             
             return nodes, edges
         except Exception as e:
@@ -88,7 +105,8 @@ class ReasoningPipeline:
         self,
         query: str,
         max_context_nodes: int = 5,
-        similarity_threshold: float = 0.7
+        similarity_threshold: float = 0.7,
+        sub_queries: Optional[List[str]] = None
     ) -> KnowledgeExpansionResult:
         """Expand the knowledge graph based on a query.
         
@@ -96,12 +114,14 @@ class ReasoningPipeline:
             query: Query to expand the graph with
             max_context_nodes: Maximum number of similar nodes to include
             similarity_threshold: Minimum similarity for context nodes
+            sub_queries: Optional pre-decomposed queries (will generate if None)
             
         Returns:
             KnowledgeExpansionResult: Results of the expansion
         """
-        # 1. Decompose query into sub-queries
-        sub_queries = await self.llm.decompose_query(query)
+        # 1. Use provided sub-queries or decompose query
+        if sub_queries is None:
+            sub_queries = await self.llm.decompose_query(query)
         
         # 2. Search for relevant context nodes
         context_nodes = []
@@ -152,47 +172,77 @@ class ReasoningPipeline:
         max_iterations: int = 3,
         **kwargs
     ) -> List[KnowledgeExpansionResult]:
-        """Expand the graph iteratively, using new knowledge for further expansion.
+        """Expand the graph iteratively, using new knowledge for further expansion."""
+        return await self.expand_graph_parallel(query, max_iterations, **kwargs)
+    
+    async def expand_graph_parallel(
+        self,
+        query: str,
+        max_iterations: int = 3,
+        max_context_nodes: int = 5,
+        similarity_threshold: float = 0.7,
+        batch_size: int = 256
+    ) -> List[KnowledgeExpansionResult]:
+        """Expand graph using parallel query processing."""
+        all_results = []
         
-        Args:
-            query: Initial query to expand from
-            max_iterations: Maximum number of expansion iterations
-            **kwargs: Additional arguments for expand_graph
+        # Generate initial sub-queries once
+        sub_queries = await self.llm.decompose_query(query)
+        if not sub_queries:
+            return []
             
-        Returns:
-            List[KnowledgeExpansionResult]: Results from each iteration
-        """
-        results = []
-        current_query = query
-        
-        for i in range(max_iterations):
-            # Expand graph with current query
-            result = await self.expand_graph(current_query, **kwargs)
-            results.append(result)
-            
-            # Generate next query based on new knowledge
-            next_query_prompt = f"""Based on the original question and our current knowledge,
-            what follow-up question would help us explore important related concepts?
-            
-            Original question: {query}
-            Current knowledge:
-            {result.final_reasoning}
-            
-            Think step by step:
-            1. What aspects haven't been fully explored?
-            2. What related concepts need more investigation?
-            3. What logical next questions arise?
-            
-            Provide a single, focused follow-up question:
-            """
-            
-            current_query = await self.llm.reason_over_context(
-                next_query_prompt,
-                [result.final_reasoning]
+        # Process initial queries in parallel
+        expansion_tasks = [
+            self.expand_graph(
+                sq,
+                max_context_nodes=max_context_nodes,
+                similarity_threshold=similarity_threshold,
+                sub_queries=[sq]  # Pass as pre-decomposed query
             )
-            
-            # Stop if no meaningful expansion is possible
-            if not result.new_nodes and not result.new_edges:
-                break
+            for sq in sub_queries
+        ]
+        expansion_results = await asyncio.gather(*expansion_tasks)
+        all_results.extend(expansion_results)
         
-        return results
+        # Stop if no meaningful expansion
+        if not any(result.new_nodes or result.new_edges for result in expansion_results):
+            return all_results
+            
+        # Process remaining iterations if needed
+        if max_iterations > 1:
+            # Generate gap queries based on current results
+            gap_prompt = f"""Based on the original query and current knowledge, identify specific questions that would help fill important knowledge gaps.
+
+Original Query: {query}
+
+Current Knowledge:
+{chr(10).join(result.final_reasoning for result in expansion_results)}
+
+Return as a list of questions in this format:
+[
+    "What is the relationship between X and Y?",
+    "How does concept A influence concept B?"
+]
+"""
+            try:
+                response = await self.llm.reason_over_context(gap_prompt, [])
+                import ast
+                gap_queries = ast.literal_eval(response)
+                if isinstance(gap_queries, list) and gap_queries:
+                    # Process gap queries in parallel
+                    gap_tasks = [
+                        self.expand_graph(
+                            gq,
+                            max_context_nodes=max_context_nodes,
+                            similarity_threshold=similarity_threshold,
+                            sub_queries=[gq]  # Pass as pre-decomposed query
+                        )
+                        for gq in gap_queries[:2]  # Limit to 2 gap queries
+                    ]
+                    gap_results = await asyncio.gather(*gap_tasks)
+                    all_results.extend(gap_results)
+            except Exception as e:
+                print(f"Failed to process gap queries: {e}")
+        
+        return all_results       
+        return all_results
