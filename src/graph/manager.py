@@ -1,5 +1,6 @@
 """Graph manager implementation."""
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncIterator
+import asyncio
 import uuid
 import numpy as np
 import logging
@@ -145,11 +146,11 @@ class GraphManager:
         """
         try:
             edges = []
-            async for edge in self.vector_store.get_edges(
+            async for edge in aiter(self.vector_store.get_edges(
                 source_id=source_id,
                 target_id=target_id,
                 edge_type=relationship_type
-            ):
+            )):
                 edges.append(edge)
             return edges
         except Exception as e:

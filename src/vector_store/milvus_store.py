@@ -1,15 +1,17 @@
 """Milvus implementation of the vector store."""
 from typing import List, Optional, Dict, AsyncIterator
+import asyncio
 import json
 import numpy as np
 from pymilvus import MilvusClient, DataType
 
 from .base import BaseVectorStore
+from .exceptions import MilvusError, CollectionInitError, SearchError
 from ..models.node import Node
 from ..models.edge import Edge
 
 
-class MilvusGraphStore(BaseVectorStore):
+class MilvusStore(BaseVectorStore):
     """Milvus-based implementation of the vector store."""
     
     def __init__(
@@ -106,7 +108,7 @@ class MilvusGraphStore(BaseVectorStore):
             )
             return node.id
         except Exception as e:
-            raise RuntimeError(f"Failed to add node: {e}")
+            raise MilvusError(f"Failed to add node: {e}")
     
     async def add_edge(self, edge: Edge) -> None:
         """Add an edge to the vector store."""
@@ -123,13 +125,14 @@ class MilvusGraphStore(BaseVectorStore):
                 data=[data]
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to add edge: {e}")
+            raise MilvusError(f"Failed to add edge: {e}")
     
     async def search_similar(
         self,
         embedding: np.ndarray,
         k: int = 5,
-        threshold: float = 0.5
+        threshold: float = 0.5,
+        deduplicate: bool = True
     ) -> List[Node]:
         """Search for similar nodes using L2 distance."""
         try:
@@ -154,16 +157,15 @@ class MilvusGraphStore(BaseVectorStore):
             
             for result_group in results:
                 for hit in result_group:
-                    if hit["distance"] <= max_l2_dist:
+                    if isinstance(hit.distance, (int, float)) and hit.distance <= max_l2_dist:
                         nodes.append(Node(
-                            id=hit["entity"]["id"],
-                            content=hit["entity"]["content"],
-                            metadata=hit["entity"]["metadata"]
+                            id=hit.entity["id"],
+                            content=hit.entity["content"],
+                            metadata=hit.entity["metadata"]
                         ))
             return nodes
         except Exception as e:
-            print(f"Search failed: {e}")
-            return []
+            raise SearchError(f"Search failed: {e}")
     
     async def get_node(self, node_id: str) -> Optional[Node]:
         """Get a node by its ID."""
@@ -183,7 +185,7 @@ class MilvusGraphStore(BaseVectorStore):
                 metadata=entity["metadata"]
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to get node: {e}")
+            raise MilvusError(f"Failed to get node: {e}")
     
     async def get_edges(
         self,
@@ -191,6 +193,16 @@ class MilvusGraphStore(BaseVectorStore):
         target_id: Optional[str] = None,
         edge_type: Optional[str] = None
     ) -> AsyncIterator[Edge]:
+        """Get edges matching the given criteria.
+        
+        Args:
+            source_id: Optional source node ID filter
+            target_id: Optional target node ID filter
+            edge_type: Optional edge type filter
+            
+        Returns:
+            AsyncIterator[Edge]: Matching edges
+        """
         """Get edges matching the given criteria."""
         try:
             filters = []
@@ -216,5 +228,6 @@ class MilvusGraphStore(BaseVectorStore):
                     type=entity["type"],
                     metadata=entity["metadata"]
                 )
+                await asyncio.sleep(0)  # Allow other coroutines to run
         except Exception as e:
-            raise RuntimeError(f"Failed to get edges: {e}")
+            raise MilvusError(f"Failed to get edges: {e}")

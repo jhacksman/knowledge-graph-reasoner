@@ -27,7 +27,8 @@ class MockVectorStore(BaseVectorStore):
         self,
         embedding: np.ndarray,
         k: int = 5,
-        threshold: float = 0.5
+        threshold: float = 0.5,
+        deduplicate: bool = True
     ) -> List[Node]:
         return [
             Node(id="test1", content="Test content 1"),

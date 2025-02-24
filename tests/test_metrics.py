@@ -9,7 +9,8 @@ from src.metrics.metrics import GraphMetrics
 @pytest.fixture
 def sample_graph() -> nx.Graph:
     """Create a sample test graph."""
-    G = nx.Graph()
+    """Create a sample test graph."""
+    G: nx.Graph = nx.Graph()
     
     # Add nodes
     nodes = ["A", "B", "C", "D", "E", "F", "G", "H"]

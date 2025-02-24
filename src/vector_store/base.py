@@ -113,7 +113,7 @@ class BaseVectorStore(ABC):
         pass
     
     @abstractmethod
-    async def get_edges(
+    def get_edges(
         self,
         source_id: Optional[str] = None,
         target_id: Optional[str] = None,

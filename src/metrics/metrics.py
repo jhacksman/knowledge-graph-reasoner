@@ -146,7 +146,7 @@ class GraphMetrics:
             subgraph = self.graph.subgraph(largest_cc)
             
             # Compute all shortest paths
-            distribution = defaultdict(int)
+            distribution: Dict[int, int] = defaultdict(int)
             for source in subgraph:
                 path_lengths = nx.single_source_shortest_path_length(
                     subgraph,

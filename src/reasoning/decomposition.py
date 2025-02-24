@@ -1,5 +1,5 @@
 """Query decomposition system for knowledge graph reasoning."""
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import numpy as np
 
 from .llm import VeniceLLM
@@ -19,7 +19,7 @@ class QueryDecomposer:
     async def decompose_query(
         self,
         query: str,
-        context: Dict[str, Any] = None
+        context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """Decompose a query into subqueries.
         

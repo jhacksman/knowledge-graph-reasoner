@@ -37,7 +37,7 @@ class QueryExecutor:
     async def execute_query(
         self,
         query: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         """Execute a query against the knowledge graph.
         
