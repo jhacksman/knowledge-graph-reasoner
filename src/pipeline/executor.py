@@ -2,12 +2,15 @@
 from typing import Dict, List, Optional, Tuple
 import asyncio
 import json
+import networkx as nx
 from pydantic import BaseModel
+from community import community_louvain
 
 from ..vector_store.milvus_store import MilvusGraphStore
 from ..reasoning.llm import VeniceLLM
 from ..models.node import Node
 from ..models.edge import Edge
+from ..metrics.graph_metrics import GraphMetricsComputer
 
 
 class KnowledgeExpansionResult(BaseModel):
@@ -17,6 +20,7 @@ class KnowledgeExpansionResult(BaseModel):
     query_decomposition: List[str]
     reasoning_context: List[str]
     final_reasoning: str
+    metrics: Dict[str, float]
 
 
 class ReasoningPipeline:
@@ -158,12 +162,16 @@ class ReasoningPipeline:
         for edge in new_edges:
             await self.store.add_edge(edge)
         
+        # Compute metrics for the expanded graph
+        metrics = GraphMetricsComputer.compute_metrics(new_nodes, new_edges)
+        
         return KnowledgeExpansionResult(
             new_nodes=new_nodes,
             new_edges=new_edges,
             query_decomposition=sub_queries,
             reasoning_context=context_texts,
-            final_reasoning=reasoning
+            final_reasoning=reasoning,
+            metrics=metrics
         )
     
     async def expand_graph_iteratively(
