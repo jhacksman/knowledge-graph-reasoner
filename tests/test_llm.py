@@ -2,7 +2,7 @@
 import pytest
 import pytest_asyncio
 import numpy as np
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 import aiohttp
 
 from src.reasoning.llm import VeniceLLM, VeniceLLMConfig
@@ -21,29 +21,36 @@ def mock_config():
 @pytest_asyncio.fixture
 async def mock_session():
     """Create mock aiohttp session."""
-    with patch("aiohttp.ClientSession") as mock:
-        mock_session = AsyncMock()
-        mock.return_value = mock_session
-        yield mock_session
+    mock_session = AsyncMock()
+    mock_response = AsyncMock()
+    mock_response.json = AsyncMock()
+    mock_response.raise_for_status = Mock()
+    
+    # Mock the post method to return a context manager
+    async def mock_post(*args, **kwargs):
+        return mock_response
+    
+    mock_session.post = AsyncMock()
+    mock_session.post.return_value = mock_response
+    
+    # Mock ClientSession creation
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        yield mock_session, mock_response
 
 
 @pytest.mark.asyncio
 async def test_embed_text(mock_config, mock_session):
     """Test text embedding."""
+    mock_session, mock_response = mock_session
+    
     # Setup mock response
     mock_embedding = [0.1, 0.2, 0.3]
-    mock_response = {
+    response_data = {
         "data": [{
             "embedding": mock_embedding
         }]
     }
-    
-    # Setup mock response object
-    mock_response_obj = AsyncMock()
-    mock_response_obj.json = AsyncMock(return_value=mock_response)
-    mock_response_obj.raise_for_status = AsyncMock()
-    mock_response_obj.close = AsyncMock()
-    mock_session.post = AsyncMock(return_value=mock_response_obj)
+    mock_response.json.return_value = response_data
     
     # Test embedding
     llm = VeniceLLM(mock_config)
@@ -58,21 +65,17 @@ async def test_embed_text(mock_config, mock_session):
 @pytest.mark.asyncio
 async def test_generate(mock_config, mock_session):
     """Test text generation."""
+    mock_session, mock_response = mock_session
+    
     # Setup mock response
-    mock_response = {
+    response_data = {
         "choices": [{
             "message": {
                 "content": "test response"
             }
         }]
     }
-    
-    # Setup mock response object
-    mock_response_obj = AsyncMock()
-    mock_response_obj.json = AsyncMock(return_value=mock_response)
-    mock_response_obj.raise_for_status = AsyncMock()
-    mock_response_obj.close = AsyncMock()
-    mock_session.post = AsyncMock(return_value=mock_response_obj)
+    mock_response.json.return_value = response_data
     
     # Test generation
     llm = VeniceLLM(mock_config)
@@ -82,22 +85,28 @@ async def test_generate(mock_config, mock_session):
     await llm.close()
     
     # Verify results
-    assert response == mock_response
+    assert response == response_data
     mock_session.post.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_error_handling(mock_config, mock_session):
     """Test API error handling."""
+    mock_session, mock_response = mock_session
+    
     # Setup mock response with error
-    mock_response_obj = AsyncMock()
-    mock_response_obj.raise_for_status = AsyncMock(side_effect=Exception("API Error"))
-    mock_response_obj.close = AsyncMock()
-    mock_session.post = AsyncMock(return_value=mock_response_obj)
+    request_info = Mock()
+    request_info.real_url = "https://api.venice.ai/api/v1/embeddings"
+    mock_response.raise_for_status.side_effect = aiohttp.ClientResponseError(
+        request_info=request_info,
+        history=(),
+        status=405,
+        message="Method Not Allowed"
+    )
     
     # Test error handling
     llm = VeniceLLM(mock_config)
-    with pytest.raises(Exception, match="API Error"):
+    with pytest.raises(aiohttp.ClientResponseError, match="405, message='Method Not Allowed'"):
         await llm.embed_text("test text")
     await llm.close()
     

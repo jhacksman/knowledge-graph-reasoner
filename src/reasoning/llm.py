@@ -47,10 +47,11 @@ class VeniceLLM:
         """Ensure aiohttp session exists."""
         if self._session is None:
             timeout = aiohttp.ClientTimeout(total=self.config.timeout)
-            self._session = aiohttp.ClientSession(
+            session = aiohttp.ClientSession(
                 headers={"Authorization": f"Bearer {self.config.api_key}"},
                 timeout=timeout
             )
+            self._session = session
     
     async def close(self):
         """Close the client session."""
@@ -72,16 +73,16 @@ class VeniceLLM:
             raise RuntimeError("Failed to initialize session")
             
         # Get response using post
-        async with self._session.post(
+        response = await self._session.post(
             f"{self.config.base_url}/embeddings",
             json={
                 "model": self.config.model,
                 "input": text
             }
-        ) as response:
-            response.raise_for_status()
-            data = await response.json()
-            return np.array(data["data"][0]["embedding"])
+        )
+        response.raise_for_status()
+        data = await response.json()
+        return np.array(data["data"][0]["embedding"])
     
     async def generate(
         self,
@@ -104,7 +105,7 @@ class VeniceLLM:
             raise RuntimeError("Failed to initialize session")
             
         # Get response using post
-        async with self._session.post(
+        response = await self._session.post(
             f"{self.config.base_url}/chat/completions",
             json={
                 "model": self.config.model,
@@ -112,6 +113,6 @@ class VeniceLLM:
                 "temperature": temperature,
                 "max_tokens": max_tokens
             }
-        ) as response:
-            response.raise_for_status()
-            return await response.json()
+        )
+        response.raise_for_status()
+        return await response.json()
