@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 import numpy as np
-from typing import List, Optional, AsyncIterator
+from typing import List, Dict, Any, Optional, AsyncIterator
 
 from src.reasoning.pipeline import ReasoningPipeline
 from src.reasoning.llm import VeniceLLM

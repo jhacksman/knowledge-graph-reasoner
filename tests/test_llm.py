@@ -4,6 +4,7 @@ import pytest_asyncio
 import numpy as np
 from unittest.mock import patch, AsyncMock, Mock
 import aiohttp
+from typing import AsyncIterator
 
 from src.reasoning.llm import VeniceLLM, VeniceLLMConfig
 
