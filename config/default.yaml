@@ -1,0 +1,22 @@
+# Default configuration for knowledge-graph-reasoner
+
+vector_store:
+  type: milvus
+  uri: ./milvus.db
+  dimension: 1536  # Based on deepseek-r1-671b embedding dimension
+  default_collection: knowledge_graph
+  token: ""  # Set via environment variable if needed
+  db: default
+
+llm:
+  provider: venice
+  model: deepseek-r1-671b
+  base_url: https://api.venice.ai/api/v1
+  max_retries: 3
+  timeout: 30
+
+reasoning:
+  max_iterations: 3
+  similarity_threshold: 0.85
+  max_context_nodes: 5
+  batch_size: 256  # For vector store operations
