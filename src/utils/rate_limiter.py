@@ -5,7 +5,7 @@ import time
 import random
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Any, Callable, Awaitable
+from typing import Dict, List, Tuple, Any, Callable, Awaitable, Optional
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,7 +63,7 @@ class TokenCounter:
 class RateLimiter:
     """Rate limiter for API requests."""
     
-    def __init__(self, config: RateLimitConfig = None):
+    def __init__(self, config: Optional[RateLimitConfig] = None):
         """Initialize rate limiter.
         
         Args:
@@ -73,9 +73,9 @@ class RateLimiter:
         self.minute_window = 60  # seconds
         self.day_window = 86400  # seconds
         self._setup_storage()
-        self._request_queue = asyncio.Queue(maxsize=self.config.queue_size)
+        self._request_queue: asyncio.Queue = asyncio.Queue(maxsize=self.config.queue_size)
         self._lock = asyncio.Lock()
-        self._worker_task = None
+        self._worker_task: Optional[asyncio.Task] = None
         self._start_worker()
     
     def _setup_storage(self) -> None:
@@ -289,7 +289,7 @@ class RateLimiter:
             return result
         else:
             # For non-urgent requests, queue for background processing
-            future = asyncio.Future()
+            future: asyncio.Future = asyncio.Future()
             
             try:
                 await asyncio.wait_for(
