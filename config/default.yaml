@@ -14,6 +14,10 @@ llm:
   base_url: https://api.venice.ai/api/v1
   max_retries: 3
   timeout: 30
+  rate_limit:
+    calls_per_minute: 60  # Default rate limit (adjust based on Venice.ai API limits)
+    burst_limit: 10       # Maximum burst of requests allowed
+    retry_interval: 1.0   # Time to wait between retries in seconds
 
 reasoning:
   max_iterations: 3
