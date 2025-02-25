@@ -186,6 +186,90 @@ class TestCheckpointManager:
         assert "successful" in message
     
     @pytest.mark.asyncio
+    async def test_validate_checkpoint_integrity(self, checkpoint_dir, mock_graph_manager):
+        """Test validating checkpoint integrity with checksums."""
+        config = {"test": "config"}
+        manager = CheckpointManager(
+            base_dir=checkpoint_dir,
+            graph_manager=mock_graph_manager,
+            config=config
+        )
+        
+        # Create checkpoint
+        checkpoint_path = await manager.create_checkpoint(
+            iteration=1,
+            description="Test checkpoint integrity"
+        )
+        
+        # Modify a file to corrupt the checkpoint
+        graph_path = checkpoint_path / "graph_structure.json"
+        with open(graph_path, "w") as f:
+            f.write('{"corrupted": true}')
+        
+        # Validate checkpoint (should fail due to checksum mismatch)
+        valid, message = await manager.validate_checkpoint(checkpoint_path)
+        
+        # Check that validation failed
+        assert not valid
+        assert "integrity check failed" in message or "consistency" in message
+    
+    @pytest.mark.asyncio
+    async def test_validate_graph_consistency(self, checkpoint_dir, mock_graph_manager):
+        """Test validating graph consistency."""
+        config = {"test": "config"}
+        manager = CheckpointManager(
+            base_dir=checkpoint_dir,
+            graph_manager=mock_graph_manager,
+            config=config
+        )
+        
+        # Create checkpoint
+        checkpoint_path = await manager.create_checkpoint(
+            iteration=1,
+            description="Test graph consistency"
+        )
+        
+        # Mock _validate_graph_consistency to test it directly
+        original_validate = manager._validate_graph_consistency
+        
+        # Create a valid graph structure
+        graph_path = checkpoint_path / "graph_structure.json"
+        with open(graph_path, "w") as f:
+            json.dump({
+                "nodes": [
+                    {"id": "node1", "content": "Node 1"},
+                    {"id": "node2", "content": "Node 2"}
+                ],
+                "edges": [
+                    {"source": "node1", "target": "node2", "type": "related"}
+                ]
+            }, f)
+        
+        # Test valid graph
+        valid, message = await manager._validate_graph_consistency(checkpoint_path)
+        assert valid
+        assert "successful" in message
+        
+        # Create an invalid graph with dangling edge
+        with open(graph_path, "w") as f:
+            json.dump({
+                "nodes": [
+                    {"id": "node1", "content": "Node 1"}
+                ],
+                "edges": [
+                    {"source": "node1", "target": "node3", "type": "related"}
+                ]
+            }, f)
+        
+        # Test invalid graph
+        valid, message = await manager._validate_graph_consistency(checkpoint_path)
+        assert not valid
+        assert "Dangling edge" in message
+        
+        # Restore original method
+        manager._validate_graph_consistency = original_validate
+    
+    @pytest.mark.asyncio
     async def test_load_checkpoint(self, checkpoint_dir, mock_graph_manager):
         """Test loading a checkpoint."""
         config = {"test": "config"}
@@ -210,6 +294,80 @@ class TestCheckpointManager:
         
         # Check that graph manager methods were called
         mock_graph_manager.import_full_graph.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_version_compatibility(self, checkpoint_dir, mock_graph_manager):
+        """Test checkpoint version compatibility handling."""
+        config = {"test": "config"}
+        manager = CheckpointManager(
+            base_dir=checkpoint_dir,
+            graph_manager=mock_graph_manager,
+            config=config
+        )
+        
+        # Create checkpoint
+        checkpoint_path = await manager.create_checkpoint(
+            iteration=1,
+            description="Test version compatibility"
+        )
+        
+        # Modify metadata to change version
+        metadata_path = checkpoint_path / "metadata.json"
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        
+        # Test compatible version (minor version change)
+        metadata["version"] = "1.1.0"
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f)
+        
+        # Validate checkpoint (should succeed with warning)
+        valid, message = await manager.validate_checkpoint(checkpoint_path)
+        assert valid
+        
+        # Test incompatible version (major version change)
+        metadata["version"] = "2.0.0"
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f)
+        
+        # Validate checkpoint (should fail)
+        valid, message = await manager.validate_checkpoint(checkpoint_path)
+        assert not valid
+        assert "Incompatible checkpoint version" in message
+    
+    @pytest.mark.asyncio
+    async def test_serialization_deserialization(self, checkpoint_dir, mock_graph_manager):
+        """Test serialization and deserialization of graph state."""
+        config = {"test": "config"}
+        manager = CheckpointManager(
+            base_dir=checkpoint_dir,
+            graph_manager=mock_graph_manager,
+            config=config
+        )
+        
+        # Create checkpoint
+        checkpoint_path = await manager.create_checkpoint(
+            iteration=1,
+            description="Test serialization"
+        )
+        
+        # Check that graph manager export methods were called
+        mock_graph_manager.export_graph_structure.assert_called_once()
+        mock_graph_manager.export_embeddings.assert_called_once()
+        mock_graph_manager.export_metrics_history.assert_called_once()
+        
+        # Load checkpoint
+        success, message = await manager.load_checkpoint(checkpoint_path)
+        assert success
+        
+        # Check that graph manager import methods were called
+        mock_graph_manager.import_full_graph.assert_called_once()
+        
+        # Check import arguments
+        args, kwargs = mock_graph_manager.import_full_graph.call_args
+        assert kwargs["import_structure"] is True
+        assert kwargs["import_embeddings"] is True
+        assert kwargs["import_metrics"] is True
 
 
 class TestReasoningPipelineCheckpointing:
@@ -346,4 +504,83 @@ class TestReasoningPipelineCheckpointing:
         # Restore original methods
         pipeline.checkpoint_manager.load_checkpoint = original_load
         pipeline.checkpoint_manager.list_checkpoints = original_list
+        pipeline.expand_knowledge = original_expand
+    
+    @pytest.mark.asyncio
+    async def test_complete_reasoning_process_with_checkpoints(self, checkpoint_dir, mock_graph_manager, mock_llm):
+        """Test complete reasoning process with checkpoints."""
+        # Create pipeline with checkpointing
+        pipeline = ReasoningPipeline(
+            llm=mock_llm,
+            graph=mock_graph_manager,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_interval_iterations=2,
+            max_iterations=6,
+            enable_checkpointing=True
+        )
+        
+        # Mock the should_checkpoint method to always return True for testing
+        original_should = pipeline.checkpoint_manager.should_checkpoint
+        
+        async def mock_should_checkpoint(iteration):
+            return iteration % 2 == 0  # Checkpoint every 2 iterations
+        
+        pipeline.checkpoint_manager.should_checkpoint = mock_should_checkpoint
+        
+        # Mock the expand_knowledge method to track checkpoints
+        original_expand = pipeline.expand_knowledge
+        
+        async def mock_expand(seed_concept, context=None, resume_from_checkpoint=None):
+            # Simulate a complete reasoning process
+            checkpoints_created = []
+            
+            # Start from the appropriate iteration
+            start_iteration = 0
+            if resume_from_checkpoint:
+                # Simulate resuming from checkpoint
+                checkpoints = await pipeline.list_checkpoints()
+                for checkpoint in checkpoints:
+                    if str(checkpoint["path"]) == str(resume_from_checkpoint):
+                        start_iteration = checkpoint["metadata"]["iteration"] + 1
+                        break
+            
+            # Run iterations
+            for i in range(start_iteration, pipeline.max_iterations):
+                # Add metrics for each iteration
+                pipeline.metric_history.append({
+                    "iteration": i,
+                    "avg_path_length": 4.8,
+                    "diameter": 17.0,
+                    "modularity": 0.7
+                })
+                
+                # Check if should create checkpoint
+                should_checkpoint = await pipeline.checkpoint_manager.should_checkpoint(i)
+                if should_checkpoint:
+                    result = await pipeline.create_manual_checkpoint(f"Iteration {i}")
+                    assert result["success"] is True
+                    checkpoints_created.append(i)
+            
+            # Verify checkpoints were created at the right iterations
+            expected_checkpoints = [0, 2, 4]  # Iterations 0, 2, 4 should have checkpoints
+            assert checkpoints_created == expected_checkpoints
+            
+            # Create final checkpoint
+            result = await pipeline.create_manual_checkpoint("Final state")
+            assert result["success"] is True
+            
+            # List all checkpoints
+            checkpoints = await pipeline.list_checkpoints()
+            assert len(checkpoints) == 4  # 3 regular + 1 final
+            
+            return {"test": "state"}
+        
+        # Replace methods with mocks
+        pipeline.expand_knowledge = mock_expand
+        
+        # Run the reasoning process
+        await pipeline.expand_knowledge("test concept")
+        
+        # Restore original methods
+        pipeline.checkpoint_manager.should_checkpoint = original_should
         pipeline.expand_knowledge = original_expand
