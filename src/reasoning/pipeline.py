@@ -1,14 +1,18 @@
 """Reasoning pipeline implementation."""
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import logging
 import asyncio
 import random
+import os
+from pathlib import Path
+import time
 
 from .llm import VeniceLLM
 from ..graph.manager import GraphManager
 from ..models.node import Node
 from ..extraction.parser import EntityRelationshipParser
 from ..extraction.deduplication import DeduplicationHandler
+from ..pipeline.checkpoint import CheckpointManager
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +30,12 @@ class ReasoningPipeline:
         max_path_length: float = 5.0,
         min_diameter: float = 16.0,
         max_diameter: float = 18.0,
-        similarity_threshold: float = 0.85
+        similarity_threshold: float = 0.85,
+        checkpoint_dir: Optional[Union[str, Path]] = None,
+        checkpoint_interval_iterations: int = 10,
+        checkpoint_interval_minutes: float = 30.0,
+        max_checkpoints: int = 5,
+        enable_checkpointing: bool = True
     ):
         """Initialize pipeline.
         
@@ -40,6 +49,11 @@ class ReasoningPipeline:
             min_diameter: Target minimum graph diameter
             max_diameter: Target maximum graph diameter
             similarity_threshold: Threshold for entity deduplication
+            checkpoint_dir: Directory for storing checkpoints
+            checkpoint_interval_iterations: Checkpoint every N iterations
+            checkpoint_interval_minutes: Checkpoint every N minutes
+            max_checkpoints: Maximum number of checkpoints to keep
+            enable_checkpointing: Whether to enable checkpointing
         """
         self.llm = llm
         self.graph = graph
@@ -56,31 +70,85 @@ class ReasoningPipeline:
         
         # Track metrics history
         self.metric_history: List[Dict[str, Any]] = []
+        
+        # Configure checkpointing
+        self.enable_checkpointing = enable_checkpointing
+        self.checkpoint_manager = None
+        
+        if enable_checkpointing:
+            # Use default checkpoint directory if not specified
+            if checkpoint_dir is None:
+                checkpoint_dir = Path(os.getcwd()) / "checkpoints"
+            
+            # Create checkpoint configuration
+            checkpoint_config = {
+                "max_iterations": max_iterations,
+                "stability_window": stability_window,
+                "min_path_length": min_path_length,
+                "max_path_length": max_path_length,
+                "min_diameter": min_diameter,
+                "max_diameter": max_diameter,
+                "similarity_threshold": similarity_threshold,
+                "checkpoint_interval_iterations": checkpoint_interval_iterations,
+                "checkpoint_interval_minutes": checkpoint_interval_minutes,
+                "max_checkpoints": max_checkpoints
+            }
+            
+            # Initialize checkpoint manager
+            self.checkpoint_manager = CheckpointManager(
+                base_dir=checkpoint_dir,
+                graph_manager=graph,
+                config=checkpoint_config,
+                checkpoint_interval_iterations=checkpoint_interval_iterations,
+                checkpoint_interval_minutes=checkpoint_interval_minutes,
+                max_checkpoints=max_checkpoints
+            )
     
     async def expand_knowledge(
         self,
         seed_concept: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        resume_from_checkpoint: Optional[Union[str, Path]] = None
     ) -> Dict[str, Any]:
         """Iteratively expand knowledge graph.
 
         Args:
             seed_concept: Initial concept
             context: Optional context for reasoning
+            resume_from_checkpoint: Path to checkpoint to resume from
 
         Returns:
             Dict[str, Any]: Final graph state
         """
         try:
-            # Initialize with seed concept
-            embedding = await self.llm.embed_text(seed_concept)
-            await self.graph.add_concept(seed_concept, embedding)
+            # Resume from checkpoint if specified
+            start_iteration = 0
+            if resume_from_checkpoint and self.checkpoint_manager:
+                success, message = await self.checkpoint_manager.load_checkpoint(resume_from_checkpoint)
+                if success:
+                    log.info(f"Resumed from checkpoint: {message}")
+                    # Get the iteration number from the checkpoint metadata
+                    checkpoints = await self.checkpoint_manager.list_checkpoints()
+                    for checkpoint in checkpoints:
+                        if str(checkpoint["path"]) == str(resume_from_checkpoint):
+                            start_iteration = checkpoint["metadata"]["iteration"] + 1
+                            log.info(f"Resuming from iteration {start_iteration}")
+                            break
+                else:
+                    log.warning(f"Failed to resume from checkpoint: {message}")
+                    # Initialize with seed concept if checkpoint loading failed
+                    embedding = await self.llm.embed_text(seed_concept)
+                    await self.graph.add_concept(seed_concept, embedding)
+            else:
+                # Initialize with seed concept
+                embedding = await self.llm.embed_text(seed_concept)
+                await self.graph.add_concept(seed_concept, embedding)
 
             # Track focus concept
             focus_concept = seed_concept
 
             # Iterative expansion
-            for i in range(self.max_iterations):
+            for i in range(start_iteration, self.max_iterations):
                 log.info(f"Starting iteration {i+1}")
 
                 # Get current graph state
@@ -114,9 +182,30 @@ class ReasoningPipeline:
                         # Focus on a new node
                         focus_concept = new_nodes[0].content
 
+                # Create checkpoint if needed
+                if self.enable_checkpointing and self.checkpoint_manager:
+                    should_checkpoint = await self.checkpoint_manager.should_checkpoint(i)
+                    if should_checkpoint:
+                        description = f"Iteration {i+1} with focus concept: {focus_concept}"
+                        checkpoint_path = await self.checkpoint_manager.create_checkpoint(
+                            iteration=i,
+                            description=description
+                        )
+                        log.info(f"Created checkpoint at {checkpoint_path}")
+
                 # Check stability
                 if await self._check_stability():
                     log.info("Graph reached stable state")
+                    
+                    # Create final checkpoint
+                    if self.enable_checkpointing and self.checkpoint_manager:
+                        description = f"Final state at iteration {i+1}"
+                        checkpoint_path = await self.checkpoint_manager.create_checkpoint(
+                            iteration=i,
+                            description=description
+                        )
+                        log.info(f"Created final checkpoint at {checkpoint_path}")
+                    
                     break
 
                 # Rate limiting
@@ -353,5 +442,110 @@ Focus on concepts that would:
             for d in diameters
         ):
             return False
+    async def generate(self, prompt: str, **kwargs) -> Dict[str, Any]:
+        """Generate a response to a prompt.
+        
+        Args:
+            prompt: Prompt to generate a response for
+            **kwargs: Additional arguments
+            
+        Returns:
+            Dict[str, Any]: Generated response
+        """
+        # In a real implementation, this would use the LLM to generate a response
+        # For now, just return a placeholder
+        return {
+            "content": f"Response to: {prompt}",
+            "usage": {
+                "prompt_tokens": len(prompt) // 4,
+                "completion_tokens": 100,
+                "total_tokens": len(prompt) // 4 + 100
+            }
+        }
+    
+    async def list_checkpoints(self) -> List[Dict[str, Any]]:
+        """List available checkpoints.
+        
+        Returns:
+            List[Dict[str, Any]]: List of checkpoint metadata
+        """
+        if not self.enable_checkpointing or not self.checkpoint_manager:
+            return []
+        
+        return await self.checkpoint_manager.list_checkpoints()
+    
+    async def validate_checkpoint(self, checkpoint_path: Union[str, Path]) -> Dict[str, Any]:
+        """Validate checkpoint integrity.
+        
+        Args:
+            checkpoint_path: Path to checkpoint
+            
+        Returns:
+            Dict[str, Any]: Validation result
+        """
+        if not self.enable_checkpointing or not self.checkpoint_manager:
+            return {"valid": False, "message": "Checkpointing is not enabled"}
+        
+        valid, message = await self.checkpoint_manager.validate_checkpoint(checkpoint_path)
+        return {"valid": valid, "message": message}
+    
+    async def create_manual_checkpoint(self, description: str = "") -> Dict[str, Any]:
+        """Create a manual checkpoint.
+        
+        Args:
+            description: Optional description
+            
+        Returns:
+            Dict[str, Any]: Checkpoint information
+        """
+        if not self.enable_checkpointing or not self.checkpoint_manager:
+            return {"success": False, "message": "Checkpointing is not enabled"}
+        
+        try:
+            # Get current iteration from metric history length
+            iteration = len(self.metric_history)
+            
+            # Create checkpoint
+            checkpoint_path = await self.checkpoint_manager.create_checkpoint(
+                iteration=iteration,
+                description=description or f"Manual checkpoint at iteration {iteration}"
+            )
+            
+            return {
+                "success": True,
+                "message": f"Created checkpoint at {checkpoint_path}",
+                "path": str(checkpoint_path)
+            }
+        except Exception as e:
+            log.error(f"Failed to create manual checkpoint: {e}")
+            return {"success": False, "message": f"Failed to create checkpoint: {e}"}
+        
+    async def _check_stability(self) -> bool:
+        """Check if graph has reached stable state.
 
+        Returns:
+            bool: True if stable
+        """
+        if len(self.metric_history) < self.stability_window:
+            return False
+
+        # Get recent metrics
+        recent = self.metric_history[-self.stability_window:]
+
+        # Check path length stability
+        path_lengths = [m["avg_path_length"] for m in recent]
+        if not all(
+            self.min_path_length <= path_len <= self.max_path_length
+            for path_len in path_lengths
+        ):
+            return False
+
+        # Check diameter stability
+        diameters = [m.get("diameter", 0) for m in recent]
+        if not all(
+            self.min_diameter <= d <= self.max_diameter
+            for d in diameters
+        ):
+            return False
+            
         return True
