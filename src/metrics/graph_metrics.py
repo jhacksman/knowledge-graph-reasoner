@@ -26,7 +26,8 @@ class GraphMetrics:
                 return 0.0
             
             communities = nx.community.greedy_modularity_communities(self.graph)
-            return nx.community.modularity(self.graph, communities)
+            return nx.community.modularity(  # type: ignore
+                self.graph, communities)
         except Exception as e:
             log.error(f"Failed to compute modularity: {e}")
             return 0.0
@@ -45,7 +46,8 @@ class GraphMetrics:
             largest_cc = max(nx.connected_components(self.graph), key=len)
             subgraph = self.graph.subgraph(largest_cc)
             
-            return nx.average_shortest_path_length(subgraph)
+            return nx.average_shortest_path_length(  # type: ignore
+                subgraph)
         except Exception as e:
             log.error(f"Failed to compute average path length: {e}")
             return 0.0
@@ -64,7 +66,8 @@ class GraphMetrics:
             largest_cc = max(nx.connected_components(self.graph), key=len)
             subgraph = self.graph.subgraph(largest_cc)
             
-            return nx.diameter(subgraph)
+            return nx.diameter(  # type: ignore
+                subgraph)
         except Exception as e:
             log.error(f"Failed to compute diameter: {e}")
             return 0.0

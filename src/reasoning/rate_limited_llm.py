@@ -73,7 +73,7 @@ class RateLimitedVeniceLLM(VeniceLLM):
         tokens = self.token_counter.count_tokens(text)
         
         # Execute with rate limiting
-        return await self.rate_limiter.execute(
+        return await self.rate_limiter.execute(  # type: ignore  # type: ignore
             super().embed_text,
             text,
             endpoint="embeddings",
@@ -103,7 +103,7 @@ class RateLimitedVeniceLLM(VeniceLLM):
         tokens = self.token_counter.count_message_tokens(messages) + max_tokens
         
         # Execute with rate limiting
-        return await self.rate_limiter.execute(
+        return await self.rate_limiter.execute(  # type: ignore  # type: ignore
             super().generate,
             messages,
             temperature=temperature,
