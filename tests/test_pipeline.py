@@ -1,8 +1,9 @@
 """Tests for reasoning pipeline."""
 import pytest
+import networkx as nx
 from unittest.mock import AsyncMock, MagicMock
-import numpy as np
-from typing import List, Dict, Any, Optional, AsyncIterator
+
+from typing import List, Optional
 
 from src.reasoning.pipeline import ReasoningPipeline
 from src.reasoning.llm import VeniceLLM
@@ -14,165 +15,304 @@ from src.models.edge import Edge
 
 class MockVectorStore(BaseVectorStore):
     """Mock vector store for testing."""
-    
-    async def initialize(self) -> None:
+
+    async def add_embedding(self, id: str, embedding: List[float], metadata: dict = None):
+        """Add embedding to store."""
         pass
-    
-    async def add_node(self, node: Node) -> str:
-        return node.id
-    
-    async def add_edge(self, edge: Edge) -> None:
+
+    async def search(self, embedding: List[float], k: int = 5, threshold: float = 0.7):
+        """Search for similar embeddings."""
+        return []
+
+    async def delete(self, id: str):
+        """Delete embedding from store."""
         pass
-    
-    async def search_similar(
-        self,
-        embedding: np.ndarray,
-        k: int = 5,
-        threshold: float = 0.5,
-        deduplicate: bool = True
-    ) -> List[Node]:
-        return [
-            Node(id="test1", content="Test content 1"),
-            Node(id="test2", content="Test content 2")
-        ]
-    
-    async def get_node(self, node_id: str) -> Optional[Node]:
-        return Node(id=node_id, content=f"Test content for {node_id}")
-    
-    async def get_edges(
-        self,
-        source_id: Optional[str] = None,
-        target_id: Optional[str] = None,
-        edge_type: Optional[str] = None
-    ) -> AsyncIterator[Edge]:
-        edges = [
-            Edge(source="test1", target="test2", type="related"),
-            Edge(source="test2", target="test3", type="similar")
-        ]
-        for edge in edges:
-            yield edge
+
+
+class MockLLM(VeniceLLM):
+    """Mock LLM for testing."""
+
+    async def embed_text(self, text: str) -> List[float]:
+        """Generate embedding for text."""
+        return [0.1, 0.2, 0.3]
+
+    async def generate(self, messages: List[dict]) -> dict:
+        """Generate text from messages."""
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": """<entity>test_entity: This is a test entity</entity>
+<relationship>test_entity: related_entity: related_to: This is a test relationship</relationship>"""
+                    }
+                }
+            ]
+        }
+
+
+class MockGraphManager(GraphManager):
+    """Mock graph manager for testing."""
+
+    def __init__(self):
+        """Initialize mock graph manager."""
+        self.metrics = MagicMock()
+        self.metrics.graph = nx.Graph()
+        self.metrics.get_modularity.return_value = 0.5
+        self.metrics.get_average_path_length.return_value = 4.5
+        self.metrics.get_bridge_nodes.return_value = ["node1", "node2"]
+        self.metrics.get_diameter.return_value = 16.0
+
+    async def add_concept(self, content: str, embedding: List[float], metadata: dict = None) -> str:
+        """Add concept to graph."""
+        return "concept_id"
+
+    async def get_concept(self, id: str) -> Optional[Node]:
+        """Get concept from graph."""
+        return Node(id=id, content="Test concept")
+
+    async def add_relationship(self, source_id: str, target_id: str, type: str, metadata: dict = None) -> str:
+        """Add relationship to graph."""
+        return "relationship_id"
+
+    async def get_relationship(self, id: str) -> Optional[Edge]:
+        """Get relationship from graph."""
+        return Edge(id=id, source_id="source", target_id="target", type="test")
+
+    async def get_similar_concepts(self, embedding: List[float], k: int = 5, threshold: float = 0.7) -> List[Node]:
+        """Get similar concepts."""
+        return []
+
+    async def get_graph_state(self) -> dict:
+        """Get current graph state."""
+        return {
+            "modularity": 0.5,
+            "avg_path_length": 4.5,
+            "bridge_nodes": ["node1", "node2"],
+            "diameter": 16.0
+        }
 
 
 @pytest.fixture
 def mock_llm():
     """Create mock LLM."""
-    llm = MagicMock(spec=VeniceLLM)
-    llm.embed_text = AsyncMock(return_value=np.random.rand(1536))
-    llm.generate = AsyncMock(return_value={
-        "choices": [{
-            "message": {
-                "content": "concept 1\nconcept 2\nconcept 3"
-            }
-        }]
-    })
-    return llm
+    return MockLLM(api_key="test", model="test")
 
 
 @pytest.fixture
 def mock_graph():
     """Create mock graph manager."""
-    graph = MagicMock(spec=GraphManager)
-    graph.add_concept = AsyncMock(return_value="test_id")
-    graph.add_relationship = AsyncMock()
-    graph.get_similar_concepts = AsyncMock(return_value=[
-        Node(id="similar1", content="Similar 1"),
-        Node(id="similar2", content="Similar 2")
-    ])
-    graph.get_graph_state = AsyncMock(return_value={
-        "modularity": 0.75,
-        "avg_path_length": 4.8,
-        "bridge_nodes": ["test1", "test2"],
-        "diameter": 16.5
-    })
-    return graph
+    return MockGraphManager()
 
 
 @pytest.fixture
 def pipeline(mock_llm, mock_graph):
     """Create reasoning pipeline."""
+    # Mock metrics for hub formation and community preservation
+    mock_graph.metrics = MagicMock()
+    mock_graph.metrics.graph = nx.Graph()
+    
     return ReasoningPipeline(
         llm=mock_llm,
         graph=mock_graph,
         max_iterations=3,
-        stability_window=2
+        stability_window=2,
+        enable_hub_formation=True,
+        enable_community_preservation=True,
+        target_modularity=0.69,
+        target_power_law_exponent=3.0
     )
 
 
 @pytest.mark.asyncio
-async def test_expand_knowledge(pipeline, mock_llm, mock_graph):
-    """Test knowledge expansion."""
-    # Expand knowledge
+async def test_init(mock_llm, mock_graph):
+    """Test initialization."""
+    pipeline = ReasoningPipeline(
+        llm=mock_llm,
+        graph=mock_graph,
+        max_iterations=5,
+        stability_window=2
+    )
+    
+    assert pipeline.llm == mock_llm
+    assert pipeline.graph == mock_graph
+    assert pipeline.max_iterations == 5
+    assert pipeline.stability_window == 2
+
+
+@pytest.mark.asyncio
+async def test_check_stability(pipeline):
+    """Test stability check."""
+    # Not enough history
+    assert await pipeline._check_stability() is False
+    
+    # Add history with unstable path length
+    pipeline.metric_history = [
+        {"avg_path_length": 3.0, "diameter": 16.0},
+        {"avg_path_length": 3.5, "diameter": 16.0},
+    ]
+    assert await pipeline._check_stability() is False
+    
+    # Add history with stable metrics
+    pipeline.metric_history = [
+        {"avg_path_length": 4.5, "diameter": 16.0},
+        {"avg_path_length": 4.8, "diameter": 17.0},
+    ]
+    assert await pipeline._check_stability() is True
+
+
+@pytest.mark.asyncio
+async def test_generate_concepts(pipeline, mock_llm):
+    """Test concept generation."""
+    concepts = await pipeline._generate_concepts(
+        "test concept",
+        {"modularity": 0.5, "avg_path_length": 4.5, "bridge_nodes": []},
+        {"domain": "test"}
+    )
+    
+    assert len(concepts) == 1
+    assert concepts[0]["name"] == "test_entity"
+    assert "relationships" in concepts[0]
+
+
+@pytest.mark.asyncio
+async def test_integrate_concepts(pipeline, mock_graph):
+    """Test concept integration."""
+    # Mock the embed_text method
+    pipeline.llm.embed_text = AsyncMock(return_value=[0.1, 0.2, 0.3])
+    
+    # Create test concepts
+    concepts = [{
+        "name": "test_concept",
+        "content": "Test content",
+        "metadata": {},
+        "relationships": [{
+            "source": "test_concept",
+            "target": "related_concept",
+            "type": "related_to",
+            "description": "Test relationship"
+        }]
+    }, {
+        "name": "related_concept",
+        "content": "Related content",
+        "metadata": {},
+        "relationships": []
+    }]
+    
+    # Mock the find_duplicates method
+    pipeline.deduplication.find_duplicates = AsyncMock(return_value={})
+    
+    # Test integration
+    await pipeline._integrate_concepts(concepts)
+    
+    mock_graph.add_concept.assert_called_once()
+    assert mock_graph.add_relationship.call_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_apply_self_organization(pipeline, mock_graph):
+    """Test self-organization mechanisms."""
+    # Mock hub formation methods
+    pipeline.hub_formation.identify_potential_hubs = AsyncMock(return_value=["hub1", "hub2"])
+    pipeline.hub_formation.strengthen_hub_connections = AsyncMock(return_value={
+        "hub_count": 2,
+        "strengthened_connections": 5,
+        "new_connections": 1
+    })
+    pipeline.hub_formation.analyze_hub_structure = AsyncMock(return_value={
+        "scale_free_properties": {
+            "is_scale_free": True,
+            "power_law_exponent": 2.8
+        }
+    })
+    
+    # Mock community preservation methods
+    pipeline.community_preservation.detect_communities = AsyncMock(return_value=[
+        {"0", "1", "2"}, {"3", "4", "5"}
+    ])
+    pipeline.community_preservation.preserve_community_structure = AsyncMock(return_value={
+        "preserved_communities": 2,
+        "strengthened_connections": 3
+    })
+    pipeline.community_preservation.optimize_modularity = AsyncMock(return_value={
+        "initial_modularity": 0.5,
+        "target_modularity": 0.69,
+        "final_modularity": 0.65
+    })
+    pipeline.community_preservation.analyze_community_evolution = AsyncMock(return_value={
+        "stability_score": 0.8
+    })
+    
+    # Test with previous communities
+    previous_communities = [{"0", "1"}, {"2", "3", "4"}]
+    result = await pipeline._apply_self_organization(previous_communities)
+    
+    # Verify hub formation was called
+    pipeline.hub_formation.identify_potential_hubs.assert_called_once()
+    pipeline.hub_formation.strengthen_hub_connections.assert_called_once()
+    
+    # Verify community preservation was called
+    pipeline.community_preservation.detect_communities.assert_called_once()
+    pipeline.community_preservation.preserve_community_structure.assert_called_once()
+    pipeline.community_preservation.optimize_modularity.assert_called_once()
+    pipeline.community_preservation.analyze_community_evolution.assert_called_once()
+    
+    # Verify results
+    assert "hub_formation" in result
+    assert "community_preservation" in result
+    assert "modularity_optimization" in result
+    assert "community_evolution" in result
+    
+    # Test error handling
+    pipeline.hub_formation.identify_potential_hubs.side_effect = Exception("Test error")
+    result = await pipeline._apply_self_organization(previous_communities)
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_expand_knowledge_with_self_organization(pipeline, mock_llm, mock_graph):
+    """Test knowledge expansion with self-organization."""
+    # Mock self-organization method
+    pipeline._apply_self_organization = AsyncMock(return_value={
+        "hub_formation": {"hub_count": 2},
+        "community_preservation": {"preserved_communities": 2}
+    })
+    
+    # Mock hub analysis and community metrics for final state
+    pipeline.hub_formation.analyze_hub_structure = AsyncMock(return_value={
+        "scale_free_properties": {
+            "is_scale_free": True,
+            "power_law_exponent": 2.8
+        }
+    })
+    
+    pipeline.community_preservation.get_community_metrics = AsyncMock(return_value={
+        "community_count": 2,
+        "modularity": 0.69
+    })
+    
+    # Expand knowledge with self-organization
+    final_state = await pipeline.expand_knowledge(
+        "test concept",
+        context={"domain": "test"},
+        self_organization_interval=1
+    )
+    
+    # Verify self-organization was applied
+    assert pipeline._apply_self_organization.call_count >= 1
+    
+    # Verify final state includes self-organization metrics
+    assert "hub_analysis" in final_state
+    assert "community_metrics" in final_state
+    
+    # Test with disabled self-organization
+    pipeline.enable_hub_formation = False
+    pipeline.enable_community_preservation = False
+    
     final_state = await pipeline.expand_knowledge(
         "test concept",
         context={"domain": "test"}
     )
     
-    # Verify LLM calls
-    assert mock_llm.embed_text.call_count >= 1
-    assert mock_llm.generate.call_count >= 1
-    
-    # Verify graph operations
-    assert mock_graph.add_concept.call_count >= 1
-    assert mock_graph.add_relationship.call_count >= 1
-    
-    # Verify final state
-    assert isinstance(final_state, dict)
-    assert "modularity" in final_state
-    assert "avg_path_length" in final_state
-    assert "bridge_nodes" in final_state
-
-
-@pytest.mark.asyncio
-async def test_stability_check(pipeline):
-    """Test stability checking."""
-    # Setup unstable metrics
-    pipeline.metric_history = [{
-        "avg_path_length": 3.0,
-        "diameter": 10.0
-    } for _ in range(5)]
-    
-    # Should not be stable
-    assert not await pipeline._check_stability()
-    
-    # Setup stable metrics
-    pipeline.metric_history = [{
-        "avg_path_length": 4.8,
-        "diameter": 17.0
-    } for _ in range(5)]
-    
-    # Should be stable
-    assert await pipeline._check_stability()
-
-
-@pytest.mark.asyncio
-async def test_concept_generation(pipeline, mock_llm):
-    """Test concept generation."""
-    concepts = await pipeline._generate_concepts(
-        "test concept",
-        {
-            "modularity": 0.75,
-            "avg_path_length": 4.8,
-            "bridge_nodes": ["test1", "test2"],
-            "diameter": 16.5
-        },
-        {"domain": "test"}
-    )
-    
-    assert len(concepts) == 3
-    assert all("content" in c for c in concepts)
-    assert all("metadata" in c for c in concepts)
-    mock_llm.generate.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_concept_integration(pipeline, mock_graph):
-    """Test concept integration."""
-    concepts = [{
-        "content": "test concept",
-        "metadata": {"key": "value"}
-    }]
-    
-    await pipeline._integrate_concepts(concepts)
-    
-    mock_graph.add_concept.assert_called_once()
-    assert mock_graph.add_relationship.call_count >= 1
+    # Verify self-organization metrics are not included
+    assert "hub_analysis" not in final_state
+    assert "community_metrics" not in final_state
