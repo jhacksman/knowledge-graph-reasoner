@@ -1,10 +1,12 @@
 """Reasoning pipeline implementation."""
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import logging
 import asyncio
 import random
 
 from .llm import VeniceLLM
+from .compositional import CompositionalReasoner
+from .prompts import ITERATIVE_REASONING_PROMPT
 from ..graph.manager import GraphManager
 from ..models.node import Node
 from ..extraction.parser import EntityRelationshipParser
@@ -26,7 +28,8 @@ class ReasoningPipeline:
         max_path_length: float = 5.0,
         min_diameter: float = 16.0,
         max_diameter: float = 18.0,
-        similarity_threshold: float = 0.85
+        similarity_threshold: float = 0.85,
+        enable_compositional: bool = True
     ):
         """Initialize pipeline.
         
@@ -40,6 +43,7 @@ class ReasoningPipeline:
             min_diameter: Target minimum graph diameter
             max_diameter: Target maximum graph diameter
             similarity_threshold: Threshold for entity deduplication
+            enable_compositional: Enable compositional reasoning
         """
         self.llm = llm
         self.graph = graph
@@ -54,19 +58,26 @@ class ReasoningPipeline:
         self.parser = EntityRelationshipParser()
         self.deduplication = DeduplicationHandler(similarity_threshold)
         
+        # Add compositional reasoning
+        self.enable_compositional = enable_compositional
+        if enable_compositional:
+            self.compositional = CompositionalReasoner(llm, graph)
+        
         # Track metrics history
         self.metric_history: List[Dict[str, Any]] = []
     
     async def expand_knowledge(
         self,
         seed_concept: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        compositional_interval: int = 10
     ) -> Dict[str, Any]:
         """Iteratively expand knowledge graph.
 
         Args:
             seed_concept: Initial concept
             context: Optional context for reasoning
+            compositional_interval: Interval for compositional reasoning
 
         Returns:
             Dict[str, Any]: Final graph state
@@ -74,11 +85,15 @@ class ReasoningPipeline:
         try:
             # Initialize with seed concept
             embedding = await self.llm.embed_text(seed_concept)
-            await self.graph.add_concept(seed_concept, embedding)
+            seed_id = await self.graph.add_concept(seed_concept, embedding)
 
             # Track focus concept
             focus_concept = seed_concept
+            focus_id = seed_id
 
+            # Track significant nodes for compositional reasoning
+            significant_nodes: List[str] = [seed_id]
+            
             # Iterative expansion
             for i in range(self.max_iterations):
                 log.info(f"Starting iteration {i+1}")
@@ -86,6 +101,11 @@ class ReasoningPipeline:
                 # Get current graph state
                 state = await self.graph.get_graph_state()
                 self.metric_history.append(state)
+
+                # Perform compositional reasoning at intervals if enabled
+                if self.enable_compositional and i > 0 and i % compositional_interval == 0:
+                    log.info(f"Performing compositional reasoning at iteration {i+1}")
+                    await self._perform_compositional_reasoning(significant_nodes)
 
                 # Generate new concepts
                 concepts = await self._generate_concepts(
@@ -97,6 +117,17 @@ class ReasoningPipeline:
                 # Add new concepts and relationships
                 new_nodes = await self._integrate_concepts(concepts)
 
+                # Update significant nodes list with high-centrality nodes
+                if new_nodes and len(new_nodes) > 0:
+                    # Add nodes with high centrality or bridge nodes
+                    for node in new_nodes:
+                        if node.id in state.get("bridge_nodes", []):
+                            significant_nodes.append(node.id)
+                    
+                    # Keep list at reasonable size
+                    if len(significant_nodes) > 20:
+                        significant_nodes = significant_nodes[-20:]
+
                 # Update focus concept if new nodes were added
                 if new_nodes and len(new_nodes) > 0:
                     # Choose a new focus concept from bridge nodes or recent additions
@@ -107,12 +138,15 @@ class ReasoningPipeline:
                             bridge_node = await self.graph.get_concept(bridge_id)
                             if bridge_node:
                                 focus_concept = bridge_node.content
+                                focus_id = bridge_node.id
                         else:
                             # Focus on a new node
                             focus_concept = new_nodes[0].content
+                            focus_id = new_nodes[0].id
                     else:
                         # Focus on a new node
                         focus_concept = new_nodes[0].content
+                        focus_id = new_nodes[0].id
 
                 # Check stability
                 if await self._check_stability():
@@ -121,6 +155,11 @@ class ReasoningPipeline:
 
                 # Rate limiting
                 await asyncio.sleep(1)
+
+            # Perform final compositional reasoning if enabled
+            if self.enable_compositional:
+                log.info("Performing final compositional reasoning")
+                await self._perform_compositional_reasoning(significant_nodes)
 
             # Get final state
             return await self.graph.get_graph_state()
@@ -292,39 +331,114 @@ class ReasoningPipeline:
     
     def _build_generation_prompt(
         self,
-        seed_concept: str,
+        focus_concept: str,
         state: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None
     ) -> str:
         """Build prompt for concept generation.
         
         Args:
-            seed_concept: Seed concept
+            focus_concept: Current focus concept
             state: Current graph state
             context: Optional context
             
         Returns:
             str: Formatted prompt
         """
-        prompt = f"""Given the current knowledge graph state:
-- Modularity: {state['modularity']:.2f}
-- Average Path Length: {state['avg_path_length']:.2f}
-- Bridge Nodes: {len(state['bridge_nodes'])}
+        # Get related concepts for context
+        related_concepts = state.get("related_concepts", [])
+        related_concepts_str = ", ".join(related_concepts[:5]) if related_concepts else "None"
+        
+        # Format bridge nodes
+        bridge_nodes = state.get("bridge_nodes", [])
+        bridge_nodes_str = ", ".join(bridge_nodes[:3]) if bridge_nodes else "None"
+        
+        # Use the iterative reasoning prompt
+        prompt = ITERATIVE_REASONING_PROMPT.format(
+            focus_concept=focus_concept,
+            related_concepts=related_concepts_str,
+            bridge_nodes=bridge_nodes_str,
+            modularity=f"{state['modularity']:.2f}",
+            avg_path_length=f"{state['avg_path_length']:.2f}"
+        )
 
-Generate new concepts related to: {seed_concept}
-
-Focus on concepts that would:
-1. Strengthen existing knowledge clusters
-2. Create meaningful bridges between domains
-3. Maintain network stability"""
-
+        # Add additional context if provided
         if context:
             prompt += "\n\nAdditional context:\n"
             for k, v in context.items():
                 prompt += f"- {k}: {v}\n"
 
-        prompt += "\nFormat: Return a list of concepts, one per line."
         return prompt
+    
+    async def _perform_compositional_reasoning(
+        self,
+        node_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Perform compositional reasoning on significant nodes.
+        
+        Args:
+            node_ids: List of significant node IDs
+            
+        Returns:
+            Dict[str, Any]: Results of compositional reasoning
+        """
+        if not self.enable_compositional:
+            return {"success": False, "error": "Compositional reasoning not enabled"}
+        
+        try:
+            # Sample nodes if too many
+            if len(node_ids) > 10:
+                # Prioritize bridge nodes and high-centrality nodes
+                state = await self.graph.get_graph_state()
+                bridge_nodes = state.get("bridge_nodes", [])
+                
+                # Include bridge nodes first
+                selected_nodes = [node_id for node_id in node_ids if node_id in bridge_nodes]
+                
+                # Add random nodes to reach 10
+                remaining = list(set(node_ids) - set(selected_nodes))
+                if remaining and len(selected_nodes) < 10:
+                    random.shuffle(remaining)
+                    selected_nodes.extend(remaining[:10 - len(selected_nodes)])
+                
+                node_ids = selected_nodes[:10]
+            
+            # Perform compositional reasoning
+            results = await self.compositional.synthesize_concepts(node_ids)
+            
+            # Process and integrate results if successful
+            if results.get("success", False) and "results" in results:
+                for result in results["results"]:
+                    if "content" in result:
+                        # Parse entities and relationships
+                        content = result["content"]
+                        entities, relationships = self.parser.parse_response(content)
+                        
+                        # Create concepts dictionary for integration
+                        concepts = []
+                        for entity in entities:
+                            concepts.append({
+                                "name": entity["name"],
+                                "content": entity["content"],
+                                "metadata": {
+                                    **entity["metadata"],
+                                    "compositional": True,
+                                    "source_concepts": result.get("source_concepts", [])
+                                },
+                                "relationships": [
+                                    rel for rel in relationships 
+                                    if rel["source"] == entity["name"] or rel["target"] == entity["name"]
+                                ]
+                            })
+                        
+                        # Integrate compositional concepts
+                        await self._integrate_concepts(concepts)
+            
+            return results
+            
+        except Exception as e:
+            log.error(f"Compositional reasoning failed: {e}")
+            return {"success": False, "error": str(e)}
     
     async def _check_stability(self) -> bool:
         """Check if graph has reached stable state.
