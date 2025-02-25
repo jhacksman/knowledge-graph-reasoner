@@ -34,7 +34,7 @@ class RateLimiter:
         self.max_retries = max_retries
         
         # Token bucket parameters
-        self.tokens = burst_limit
+        self.tokens: float = float(burst_limit)
         self.token_rate = calls_per_minute / 60.0  # tokens per second
         self.last_refill_time = time.time()
         

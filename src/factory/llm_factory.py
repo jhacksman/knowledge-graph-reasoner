@@ -55,23 +55,25 @@ def create_venice_llm(
             os.environ.get("VENICE_RATE_LIMIT_RETRY_INTERVAL", "1.0")
         )
         
+        # Ensure all values are of the correct type for the config
         config = RateLimitedVeniceLLMConfig(
-            api_key=api_key,
-            model=model,
-            base_url=base_url,
-            max_retries=max_retries,
-            timeout=timeout,
-            calls_per_minute=calls_per_minute,
-            burst_limit=burst_limit,
-            retry_interval=retry_interval
+            api_key=str(api_key),
+            model=str(model) if model is not None else "deepseek-r1-671b",
+            base_url=str(base_url) if base_url is not None else "https://api.venice.ai/api/v1",
+            max_retries=int(max_retries) if max_retries is not None else 3,
+            timeout=int(timeout) if timeout is not None else 30,
+            calls_per_minute=int(calls_per_minute) if calls_per_minute is not None else 60,
+            burst_limit=int(burst_limit) if burst_limit is not None else 10,
+            retry_interval=float(retry_interval) if retry_interval is not None else 1.0
         )
         return RateLimitedVeniceLLM(config)
     else:
+        # Ensure all values are of the correct type for the config
         config = VeniceLLMConfig(
-            api_key=api_key,
-            model=model,
-            base_url=base_url,
-            max_retries=max_retries,
-            timeout=timeout
+            api_key=str(api_key),
+            model=str(model) if model is not None else "deepseek-r1-671b",
+            base_url=str(base_url) if base_url is not None else "https://api.venice.ai/api/v1",
+            max_retries=int(max_retries) if max_retries is not None else 3,
+            timeout=int(timeout) if timeout is not None else 30
         )
         return VeniceLLM(config)
