@@ -73,12 +73,12 @@ class GraphVisualizer:
             
             # Get all nodes and edges
             nodes = []
-            for node in await self.graph_manager.get_all_concepts():
+            for node in await self.graph_manager.get_concepts():
                 nodes.append(node)
                 G.add_node(node and node.id, content=node and node.content, metadata=node and node.metadata)
             
             edges = []
-            for edge in await self.graph_manager.get_all_relationships():
+            for edge in await self.graph_manager.get_relationships():
                 edges.append(edge)
                 G.add_edge(
                     edge.source,
@@ -272,7 +272,7 @@ class GraphVisualizer:
             
             # Get all edges
             edges = []
-            for edge in await self.graph_manager.get_all_relationships():
+            for edge in await self.graph_manager.get_relationships():
                 edges.append(edge)
             
             # Create node-to-community mapping
@@ -405,12 +405,12 @@ class GraphVisualizer:
             
             # Get all nodes and edges
             nodes = []
-            for node in await self.graph_manager.get_all_concepts():
+            for node in await self.graph_manager.get_concepts():
                 nodes.append(node)
                 G.add_node(node and node.id, content=node and node.content, metadata=node and node.metadata)
             
             edges = []
-            for edge in await self.graph_manager.get_all_relationships():
+            for edge in await self.graph_manager.get_relationships():
                 edges.append(edge)
                 G.add_edge(
                     edge.source,
