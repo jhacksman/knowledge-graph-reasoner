@@ -1,5 +1,5 @@
 """Reasoning pipeline implementation."""
-from typing import List, Dict, Any, Optional, Set, List, Set
+from typing import List, Dict, Any, Optional, Set
 import logging
 import asyncio
 import random
