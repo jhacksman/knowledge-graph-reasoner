@@ -240,12 +240,12 @@ class ReasoningPipeline:
                     continue
                 
                 # Get embedding
-                embedding = embeddings.get(concept["name"])
-                if embedding is None:
+                embedding_value = embeddings.get(concept["name"])
+                if embedding_value is None:
                     continue
                 
-                # Ensure embedding is not None (for type checking)
-                assert embedding is not None
+                # Use a properly typed variable for the embedding
+                embedding = embedding_value
                 
                 # Add to graph
                 concept_id = await self.graph.add_concept(
