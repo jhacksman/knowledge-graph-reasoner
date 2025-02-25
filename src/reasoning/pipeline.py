@@ -380,7 +380,7 @@ Focus on concepts that would:
 
     async def _apply_self_organization(
         self,
-        previous_communities: List[Set[str]] = None
+        previous_communities: Optional[List[Set[str]]] = None
     ) -> Dict[str, Any]:
         """Apply self-organization mechanisms to the graph.
 
@@ -390,11 +390,11 @@ Focus on concepts that would:
         Returns:
             Dict[str, Any]: Results of self-organization
         """
-        results = {
-            "hub_formation": None,
-            "community_preservation": None,
-            "modularity_optimization": None,
-            "community_evolution": None
+        results: Dict[str, Any] = {
+            "hub_formation": {},
+            "community_preservation": {},
+            "modularity_optimization": {},
+            "community_evolution": {}
         }
 
         try:

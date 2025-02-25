@@ -3,7 +3,7 @@ import pytest
 import networkx as nx
 from unittest.mock import AsyncMock, MagicMock
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from src.reasoning.pipeline import ReasoningPipeline
 from src.reasoning.llm import VeniceLLM
@@ -16,11 +16,11 @@ from src.models.edge import Edge
 class MockVectorStore(BaseVectorStore):
     """Mock vector store for testing."""
 
-    async def add_embedding(self, id: str, embedding: List[float], metadata: dict = None):
+    async def add_embedding(self, id: str, embedding: List[float], metadata: Optional[Dict[str, Any]] = None):
         """Add embedding to store."""
         pass
 
-    async def search(self, embedding: List[float], k: int = 5, threshold: float = 0.7):
+    async def search(self, embedding: Any, k: int = 5, threshold: float = 0.7):
         """Search for similar embeddings."""
         return []
 
@@ -32,11 +32,11 @@ class MockVectorStore(BaseVectorStore):
 class MockLLM(VeniceLLM):
     """Mock LLM for testing."""
 
-    async def embed_text(self, text: str) -> List[float]:
+    async def embed_text(self, text: str) -> Any:
         """Generate embedding for text."""
         return [0.1, 0.2, 0.3]
 
-    async def generate(self, messages: List[dict]) -> dict:
+    async def generate(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1000) -> Any:
         """Generate text from messages."""
         return {
             "choices": [
@@ -62,7 +62,7 @@ class MockGraphManager(GraphManager):
         self.metrics.get_bridge_nodes.return_value = ["node1", "node2"]
         self.metrics.get_diameter.return_value = 16.0
 
-    async def add_concept(self, content: str, embedding: List[float], metadata: dict = None) -> str:
+    async def add_concept(self, content: str, embedding: Any, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Add concept to graph."""
         return "concept_id"
 
@@ -70,15 +70,15 @@ class MockGraphManager(GraphManager):
         """Get concept from graph."""
         return Node(id=id, content="Test concept")
 
-    async def add_relationship(self, source_id: str, target_id: str, type: str, metadata: dict = None) -> str:
+    async def add_relationship(self, source_id: str, target_id: str, type: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Add relationship to graph."""
         return "relationship_id"
 
     async def get_relationship(self, id: str) -> Optional[Edge]:
         """Get relationship from graph."""
-        return Edge(id=id, source_id="source", target_id="target", type="test")
+        return Edge(source="source", target="target", type="test")
 
-    async def get_similar_concepts(self, embedding: List[float], k: int = 5, threshold: float = 0.7) -> List[Node]:
+    async def get_similar_concepts(self, embedding: Any, k: int = 5, threshold: float = 0.7) -> List[Node]:
         """Get similar concepts."""
         return []
 

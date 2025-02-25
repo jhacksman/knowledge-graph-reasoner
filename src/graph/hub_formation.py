@@ -51,7 +51,7 @@ class HubFormation:
             )
 
             return [
-                node_id for node_id, score in combined_centrality.items()
+                str(node_id) for node_id, score in combined_centrality.items()
                 if score >= threshold
             ]
 
