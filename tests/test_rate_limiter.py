@@ -260,6 +260,7 @@ class TestRateLimiter:
         rate_limiter._check_rate_limits = mock_check_rate_limits
         
         # Test waiting
+        start_time = time.time()
         await rate_limiter.wait_if_needed(100)
         elapsed = time.time() - start_time
         
