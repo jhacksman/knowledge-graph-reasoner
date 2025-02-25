@@ -102,7 +102,7 @@ class HubFormation:
                         # Update relationship metadata
                         metadata = rel.metadata or {}
                         metadata["hub_strengthened"] = True
-                        metadata["hub_strength"] = metadata.get("hub_strength", 0) + 1
+                        metadata["hub_strength"] = int(metadata.get("hub_strength", 0)) + 1
 
                         # Update relationship
                         await graph_manager.update_relationship(

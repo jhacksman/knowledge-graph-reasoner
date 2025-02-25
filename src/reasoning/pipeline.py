@@ -104,7 +104,7 @@ class ReasoningPipeline:
             focus_concept = seed_concept
 
             # Track previous communities for evolution analysis
-            previous_communities = []
+            previous_communities: List[Set[str]] = []
 
             # Iterative expansion
             for i in range(self.max_iterations):
