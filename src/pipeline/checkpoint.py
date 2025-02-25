@@ -219,14 +219,9 @@ class CheckpointManager:
         Args:
             checkpoint_path: Path to checkpoint directory
         """
-        # Get all nodes and edges from the vector store
-        # This is a simplified implementation - in a real system,
-        # you would need to implement proper serialization for the graph structure
-        
-        # For now, we'll just save a placeholder
-        graph_path = checkpoint_path / "graph_structure.json"
-        with open(graph_path, "w") as f:
-            json.dump({"nodes": [], "edges": []}, f)
+        # Export graph structure using GraphManager
+        structure_path = checkpoint_path / "graph_structure.json"
+        await self.graph_manager.export_graph_structure(structure_path, compress=False)
     
     async def _save_embeddings(self, checkpoint_path: Path) -> None:
         """Save embeddings to checkpoint.
@@ -234,22 +229,9 @@ class CheckpointManager:
         Args:
             checkpoint_path: Path to checkpoint directory
         """
-        # Save embeddings in an efficient binary format
-        # This is a simplified implementation - in a real system,
-        # you would need to implement proper serialization for the embeddings
-        
-        # For now, we'll just save a placeholder
+        # Export embeddings using GraphManager
         embeddings_path = checkpoint_path / "embeddings.pkl"
-        with open(embeddings_path, "wb") as f:
-            pickle.dump({"embeddings": []}, f)
-        
-        # Compress if enabled
-        if self.compress:
-            with open(embeddings_path, "rb") as f_in:
-                with gzip.open(f"{embeddings_path}.gz", "wb") as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-            # Remove uncompressed file
-            os.remove(embeddings_path)
+        await self.graph_manager.export_embeddings(embeddings_path, compress=self.compress)
     
     async def _save_metrics(self, checkpoint_path: Path) -> None:
         """Save metrics history to checkpoint.
@@ -257,14 +239,9 @@ class CheckpointManager:
         Args:
             checkpoint_path: Path to checkpoint directory
         """
-        # Save metrics history
-        # This is a simplified implementation - in a real system,
-        # you would need to implement proper serialization for the metrics history
-        
-        # For now, we'll just save a placeholder
+        # Export metrics history using GraphManager
         metrics_path = checkpoint_path / "metrics.json"
-        with open(metrics_path, "w") as f:
-            json.dump({"metrics_history": []}, f)
+        await self.graph_manager.export_metrics_history(metrics_path)
     
     async def _save_metadata(self, checkpoint_path: Path, metadata: CheckpointMetadata) -> None:
         """Save metadata to checkpoint.
@@ -325,6 +302,125 @@ class CheckpointManager:
             logger.info(f"Removing old checkpoint: {path}")
             shutil.rmtree(path)
     
+    async def _validate_graph_consistency(self, checkpoint_path: Path) -> Tuple[bool, str]:
+        """Validate graph consistency (no dangling edges, etc.).
+        
+        Args:
+            checkpoint_path: Path to checkpoint directory
+            
+        Returns:
+            Tuple[bool, str]: Validation result and message
+        """
+        try:
+            # Load graph structure
+            graph_path = checkpoint_path / "graph_structure.json"
+            if not graph_path.exists():
+                return False, f"Graph structure file not found: {graph_path}"
+            
+            with open(graph_path, "r") as f:
+                graph_data = json.load(f)
+            
+            # Check if nodes and edges are present
+            if "nodes" not in graph_data or "edges" not in graph_data:
+                return False, "Invalid graph structure format: missing nodes or edges"
+            
+            # Extract node IDs and edge references
+            node_ids = set()
+            for node in graph_data["nodes"]:
+                if "id" not in node:
+                    return False, "Invalid node format: missing ID"
+                node_ids.add(node["id"])
+            
+            # Check for dangling edges
+            for edge in graph_data["edges"]:
+                if "source" not in edge or "target" not in edge:
+                    return False, "Invalid edge format: missing source or target"
+                
+                if edge["source"] not in node_ids:
+                    return False, f"Dangling edge: source node {edge['source']} not found"
+                
+                if edge["target"] not in node_ids:
+                    return False, f"Dangling edge: target node {edge['target']} not found"
+            
+            return True, "Graph consistency validation successful"
+            
+        except Exception as e:
+            logger.error(f"Failed to validate graph consistency: {e}")
+            return False, f"Failed to validate graph consistency: {e}"
+    
+    async def _handle_version_compatibility(self, checkpoint_path: Path, version: str) -> None:
+        """Handle version compatibility for checkpoint format changes.
+        
+        Args:
+            checkpoint_path: Path to checkpoint directory
+            version: Checkpoint format version
+        """
+        current_version = "1.0.0"
+        
+        # Parse versions
+        checkpoint_version = tuple(map(int, version.split(".")))
+        current_version_tuple = tuple(map(int, current_version.split(".")))
+        
+        # Handle version-specific transformations
+        if checkpoint_version < current_version_tuple:
+            logger.info(f"Upgrading checkpoint from version {version} to {current_version}")
+            
+            # Example: If we're upgrading from 0.x.x to 1.0.0
+            if checkpoint_version[0] == 0 and current_version_tuple[0] == 1:
+                await self._upgrade_from_v0_to_v1(checkpoint_path)
+        elif checkpoint_version > current_version_tuple:
+            logger.warning(f"Downgrading checkpoint from version {version} to {current_version}")
+            
+            # Example: If we're downgrading from 2.x.x to 1.0.0
+            if checkpoint_version[0] == 2 and current_version_tuple[0] == 1:
+                await self._downgrade_from_v2_to_v1(checkpoint_path)
+    
+    async def _upgrade_from_v0_to_v1(self, checkpoint_path: Path) -> None:
+        """Upgrade checkpoint from version 0.x.x to 1.0.0.
+        
+        Args:
+            checkpoint_path: Path to checkpoint directory
+        """
+        # This is a placeholder for version-specific upgrade logic
+        # In a real implementation, you would transform the checkpoint data
+        # to match the new format
+        logger.info(f"Upgrading checkpoint at {checkpoint_path} from v0.x.x to v1.0.0")
+        
+        # Example: Update graph structure format
+        graph_path = checkpoint_path / "graph_structure.json"
+        if graph_path.exists():
+            with open(graph_path, "r") as f:
+                graph_data = json.load(f)
+            
+            # Apply transformations to match v1.0.0 format
+            # For example, rename fields, add new required fields, etc.
+            
+            with open(graph_path, "w") as f:
+                json.dump(graph_data, f)
+    
+    async def _downgrade_from_v2_to_v1(self, checkpoint_path: Path) -> None:
+        """Downgrade checkpoint from version 2.x.x to 1.0.0.
+        
+        Args:
+            checkpoint_path: Path to checkpoint directory
+        """
+        # This is a placeholder for version-specific downgrade logic
+        # In a real implementation, you would transform the checkpoint data
+        # to match the older format
+        logger.info(f"Downgrading checkpoint at {checkpoint_path} from v2.x.x to v1.0.0")
+        
+        # Example: Update graph structure format
+        graph_path = checkpoint_path / "graph_structure.json"
+        if graph_path.exists():
+            with open(graph_path, "r") as f:
+                graph_data = json.load(f)
+            
+            # Apply transformations to match v1.0.0 format
+            # For example, remove fields that don't exist in v1.0.0, etc.
+            
+            with open(graph_path, "w") as f:
+                json.dump(graph_data, f)
+    
     async def list_checkpoints(self) -> List[Dict[str, Any]]:
         """List available checkpoints.
         
@@ -371,37 +467,33 @@ class CheckpointManager:
         logger.info(f"Loading checkpoint from {checkpoint_path}")
         
         try:
-            # Verify checkpoint integrity
-            metadata_path = checkpoint_path / "metadata.json"
-            if not metadata_path.exists():
-                return False, f"Metadata not found in checkpoint: {checkpoint_path}"
+            # Validate checkpoint first
+            valid, message = await self.validate_checkpoint(checkpoint_path)
+            if not valid:
+                return False, message
             
             # Load metadata
+            metadata_path = checkpoint_path / "metadata.json"
             with open(metadata_path, "r") as f:
                 metadata_dict = json.load(f)
             
             metadata = CheckpointMetadata.from_dict(metadata_dict)
             
-            # Verify checksum if available
-            if metadata.checksum:
-                calculated_checksum = await self._calculate_checksum(checkpoint_path)
-                if calculated_checksum != metadata.checksum:
-                    return False, f"Checkpoint integrity check failed: {checkpoint_path}"
+            # Handle version compatibility
+            if metadata.version != "1.0.0":
+                # Apply version-specific transformations if needed
+                await self._handle_version_compatibility(checkpoint_path, metadata.version)
             
-            # Load graph structure
-            # This is a simplified implementation - in a real system,
-            # you would need to implement proper deserialization for the graph structure
+            # Import full graph from checkpoint
+            import_result = await self.graph_manager.import_full_graph(
+                directory=checkpoint_path,
+                import_structure=True,
+                import_embeddings=True,
+                import_metrics=True
+            )
             
-            # Load embeddings
-            # This is a simplified implementation - in a real system,
-            # you would need to implement proper deserialization for the embeddings
-            
-            # Load metrics history
-            # This is a simplified implementation - in a real system,
-            # you would need to implement proper deserialization for the metrics history
-            
-            logger.info(f"Checkpoint loaded successfully from {checkpoint_path}")
-            return True, f"Checkpoint loaded successfully from {checkpoint_path}"
+            logger.info(f"Checkpoint loaded successfully from {checkpoint_path}: {import_result}")
+            return True, f"Checkpoint loaded successfully from {checkpoint_path}: {import_result}"
             
         except Exception as e:
             logger.error(f"Failed to load checkpoint: {e}")
@@ -433,6 +525,20 @@ class CheckpointManager:
             
             metadata = CheckpointMetadata.from_dict(metadata_dict)
             
+            # Version compatibility check
+            current_version = "1.0.0"  # Current checkpoint format version
+            if metadata.version != current_version:
+                # Handle version differences
+                logger.warning(f"Checkpoint version mismatch: {metadata.version} vs {current_version}")
+                # For now, we'll just warn but continue - in a real implementation,
+                # you would implement version-specific loading logic here
+                
+                # Check if the version is compatible (major version must match)
+                checkpoint_major = metadata.version.split(".")[0]
+                current_major = current_version.split(".")[0]
+                if checkpoint_major != current_major:
+                    return False, f"Incompatible checkpoint version: {metadata.version} (current: {current_version})"
+            
             # Verify checksum if available
             if metadata.checksum:
                 calculated_checksum = await self._calculate_checksum(checkpoint_path)
@@ -452,6 +558,11 @@ class CheckpointManager:
             for file in required_files:
                 if not (checkpoint_path / file).exists():
                     return False, f"Required file not found in checkpoint: {file}"
+            
+            # Validate graph consistency (no dangling edges)
+            graph_consistency_result = await self._validate_graph_consistency(checkpoint_path)
+            if not graph_consistency_result[0]:
+                return graph_consistency_result
             
             return True, f"Checkpoint validation successful: {checkpoint_path}"
             
