@@ -1,5 +1,5 @@
 """Hub formation algorithms for self-organizing knowledge networks."""
-from typing import List, Dict, Any, Collection
+from typing import List, Dict, Any, Optional, cast
 import numpy as np
 import networkx as nx
 import logging
@@ -36,7 +36,7 @@ class HubFormation:
             eigenvector = nx.eigenvector_centrality(self.metrics.graph, max_iter=1000)
 
             # Combine centrality measures
-            combined_centrality = {}
+            combined_centrality: Dict[Any, float] = {}
             for node in self.metrics.graph.nodes():
                 combined_centrality[node] = (
                     centrality.get(node, 0) +
@@ -74,7 +74,7 @@ class HubFormation:
             Dict[str, Any]: Results of hub strengthening
         """
         try:
-            results = {
+            results: Dict[str, Any] = {
                 "strengthened_connections": 0,
                 "new_connections": 0,
                 "hub_count": len(hub_ids)
@@ -172,7 +172,7 @@ class HubFormation:
             }
 
             # Identify top hubs
-            combined_centrality = {}
+            combined_centrality: Dict[Any, float] = {}
             for node in self.metrics.graph.nodes():
                 combined_centrality[node] = (
                     degree.get(node, 0) +
@@ -188,16 +188,17 @@ class HubFormation:
             )[:10]
 
             # Convert to list of dictionaries with string IDs
-            hub_metrics["top_hubs"] = [
-                {
+            top_hubs_list: List[Dict[str, Any]] = []
+            for hub_id, score in top_hubs:
+                top_hubs_list.append({
                     "id": str(hub_id),
                     "centrality": score,
                     "degree": degree.get(hub_id, 0),
                     "betweenness": betweenness.get(hub_id, 0),
                     "eigenvector": eigenvector.get(hub_id, 0)
-                }
-                for hub_id, score in top_hubs
-            ]
+                })
+            
+            hub_metrics["top_hubs"] = top_hubs_list
 
             # Check for scale-free properties
             hub_metrics["scale_free_properties"] = self._check_scale_free_properties()
@@ -221,13 +222,13 @@ class HubFormation:
         """
         values_list = list(values)
         return {
-            "min": min(values_list) if values_list else 0,
-            "max": max(values_list) if values_list else 0,
-            "mean": np.mean(values_list) if values_list else 0,
-            "median": np.median(values_list) if values_list else 0,
-            "std": np.std(values_list) if values_list else 0,
-            "percentile_90": np.percentile(values_list, 90) if values_list else 0,
-            "percentile_95": np.percentile(values_list, 95) if values_list else 0
+            "min": float(min(values_list)) if values_list else 0.0,
+            "max": float(max(values_list)) if values_list else 0.0,
+            "mean": float(np.mean(values_list)) if values_list else 0.0,
+            "median": float(np.median(values_list)) if values_list else 0.0,
+            "std": float(np.std(values_list)) if values_list else 0.0,
+            "percentile_90": float(np.percentile(values_list, 90)) if values_list else 0.0,
+            "percentile_95": float(np.percentile(values_list, 95)) if values_list else 0.0
         }
 
     def _check_scale_free_properties(self) -> Dict[str, Any]:
@@ -284,8 +285,8 @@ class HubFormation:
 
             return {
                 "is_scale_free": is_scale_free,
-                "power_law_exponent": power_law_exponent,
-                "r_squared": r_squared,
+                "power_law_exponent": float(power_law_exponent),
+                "r_squared": float(r_squared),
                 "degree_distribution": {
                     "degrees": unique_degrees.tolist(),
                     "counts": counts.tolist()

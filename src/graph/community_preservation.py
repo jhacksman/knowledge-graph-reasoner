@@ -1,5 +1,5 @@
 """Community preservation mechanisms for self-organizing knowledge networks."""
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Optional
 import networkx as nx
 import logging
 import numpy as np
@@ -55,7 +55,7 @@ class CommunityPreservation:
             if not self.communities:
                 await self.detect_communities()
 
-            metrics = {
+            metrics: Dict[str, Any] = {
                 "community_count": len(self.communities),
                 "community_sizes": [len(c) for c in self.communities],
                 "modularity": nx.community.modularity(self.graph, self.communities),
@@ -104,7 +104,7 @@ class CommunityPreservation:
             if not self.communities:
                 await self.detect_communities()
 
-            results = {
+            results: Dict[str, Any] = {
                 "preserved_communities": len(self.communities),
                 "strengthened_connections": 0,
                 "community_metrics": await self.get_community_metrics()
@@ -128,6 +128,7 @@ class CommunityPreservation:
                                     # Update relationship metadata
                                     metadata = rel.metadata or {}
                                     metadata["community_preserved"] = True
+                                    # Explicitly use default value for node_to_community.get()
                                     metadata["community_id"] = self.node_to_community.get(node1, 0)
 
                                     # Update relationship
@@ -167,7 +168,7 @@ class CommunityPreservation:
             current_communities = self.communities
 
             # Calculate community stability metrics
-            stability_metrics = {
+            stability_metrics: Dict[str, Any] = {
                 "previous_count": len(previous_communities),
                 "current_count": len(current_communities),
                 "community_changes": []
@@ -194,8 +195,8 @@ class CommunityPreservation:
 
                     matched_communities.append({
                         "previous_id": i,
-                        "current_id": best_match,
-                        "similarity": best_similarity,
+                        "current_id": int(best_match),
+                        "similarity": float(best_similarity),
                         "previous_size": len(previous_communities[i]),
                         "current_size": len(current_communities[best_match]) if best_match < len(current_communities) else 0
                     })
@@ -204,7 +205,10 @@ class CommunityPreservation:
 
             # Calculate overall stability score (average of best match similarities)
             if matched_communities:
-                stability_metrics["stability_score"] = sum(float(m.get("similarity", 0.0)) for m in matched_communities) / len(matched_communities)
+                # Use .get() with default value to handle missing keys
+                stability_metrics["stability_score"] = sum(
+                    float(m.get("similarity", 0.0)) for m in matched_communities
+                ) / len(matched_communities)
             else:
                 stability_metrics["stability_score"] = 0.0
 
@@ -216,7 +220,7 @@ class CommunityPreservation:
                 "error": str(e),
                 "previous_count": len(previous_communities),
                 "current_count": len(self.communities) if self.communities else 0,
-                "stability_score": 0
+                "stability_score": 0.0
             }
 
     async def optimize_modularity(
@@ -240,7 +244,7 @@ class CommunityPreservation:
             # Get current modularity
             current_modularity = nx.community.modularity(self.graph, self.communities)
 
-            results = {
+            results: Dict[str, Any] = {
                 "initial_modularity": current_modularity,
                 "target_modularity": target_modularity,
                 "added_connections": 0,
