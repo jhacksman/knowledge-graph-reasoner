@@ -331,7 +331,7 @@ class GraphBenchmark:
             return comparison
         except Exception as e:
             log.error(f"Failed to compare with reference: {e}")
-            return {\"error\": str(e)}
+            return {"error": str(e)}
     
     async def create_reference_graph(
         self,
@@ -393,7 +393,7 @@ class GraphBenchmark:
             }
         except Exception as e:
             log.error(f"Failed to create reference graph: {e}")
-            return {\"error\": str(e)}
+            return {"error": str(e)}
     
     def list_reference_graphs(self) -> List[Dict[str, Any]]:
         """List available reference graphs.
