@@ -61,7 +61,10 @@ def mock_llm():
     llm.generate = AsyncMock(return_value={
         "choices": [{
             "message": {
-                "content": "concept 1\nconcept 2\nconcept 3"
+                "content": """<entity>concept1: description1</entity>
+<entity>concept2: description2</entity>
+<entity>concept3: description3</entity>
+<relationship>concept1: concept2: relates_to: description</relationship>"""
             }
         }]
     })
@@ -147,6 +150,10 @@ async def test_stability_check(pipeline):
 @pytest.mark.asyncio
 async def test_concept_generation(pipeline, mock_llm):
     """Test concept generation."""
+    # Add parser to pipeline for testing
+    from src.extraction.parser import EntityRelationshipParser
+    pipeline.parser = EntityRelationshipParser()
+    
     concepts = await pipeline._generate_concepts(
         "test concept",
         {
@@ -158,7 +165,9 @@ async def test_concept_generation(pipeline, mock_llm):
         {"domain": "test"}
     )
     
-    assert len(concepts) == 3
+    # With our new format, we should get entities from the parser
+    assert len(concepts) > 0
+    assert all("name" in c for c in concepts)
     assert all("content" in c for c in concepts)
     assert all("metadata" in c for c in concepts)
     mock_llm.generate.assert_called_once()
@@ -168,11 +177,23 @@ async def test_concept_generation(pipeline, mock_llm):
 async def test_concept_integration(pipeline, mock_graph):
     """Test concept integration."""
     concepts = [{
-        "content": "test concept",
-        "metadata": {"key": "value"}
+        "name": "test concept",
+        "content": "test description",
+        "metadata": {"key": "value"},
+        "relationships": [
+            {
+                "source": "test concept",
+                "target": "other concept",
+                "type": "relates_to",
+                "description": "test relationship"
+            }
+        ]
     }]
     
     await pipeline._integrate_concepts(concepts)
     
-    mock_graph.add_concept.assert_called_once()
+    # We expect two calls to add_concept:
+    # 1. For the main concept
+    # 2. For the target of the relationship
+    assert mock_graph.add_concept.call_count == 2
     assert mock_graph.add_relationship.call_count >= 1

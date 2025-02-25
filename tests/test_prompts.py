@@ -28,7 +28,7 @@ def test_concept_generation_prompt():
     assert "modularity: 0.75" in prompt.lower()
     assert "average path length: 4.8" in prompt.lower()
     assert "test concept" in prompt
-    assert "format: return a list of concepts" in prompt.lower()
+    assert "format your response with entities and relationships" in prompt.lower()
 
 
 def test_relationship_inference_prompt():
@@ -42,10 +42,9 @@ def test_relationship_inference_prompt():
     assert "Concept A:" in prompt
     assert "Concept B:" in prompt
     assert "test context" in prompt
-    assert "Format: Return as JSON" in prompt
-    assert "exists (bool)" in prompt
-    assert "type (str)" in prompt
-    assert "confidence (float)" in prompt
+    assert "Format your response as:" in prompt
+    assert "<relationship>concept_a: concept_b: relationship_type:" in prompt
+    assert "detailed description of the relationship" in prompt
 
 
 def test_bridge_node_prompt():
@@ -61,7 +60,7 @@ def test_bridge_node_prompt():
     assert "Domain B: Chemistry" in prompt
     assert "Current bridge nodes: ['node1', 'node2']" in prompt
     assert "Modularity score: 0.75" in prompt
-    assert "Format: Return a list of bridge concepts" in prompt
+    assert "Format your response with entities and relationships" in prompt
 
 
 def test_stability_check_prompt():
