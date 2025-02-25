@@ -55,7 +55,7 @@ class MaterialsDesignExample:
         self.analytics = AdvancedAnalytics()
         
         # Initialize graph
-        self.graph = nx.Graph()
+        self.graph: nx.Graph = nx.Graph()
         
         # Domain mapping for materials science
         self.domain_mapping: Dict[str, str] = {}
@@ -440,7 +440,7 @@ class MaterialsDesignExample:
             graph_filepath = os.path.join(self.output_dir, graph_filename)
             
             # Convert node and edge attributes to strings for GraphML
-            graph_for_export = nx.Graph()
+            graph_for_export: nx.Graph = nx.Graph()
             for node, data in self.graph.nodes(data=True):
                 node_data = {}
                 for key, value in data.items():
