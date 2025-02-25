@@ -31,3 +31,10 @@ reasoning:
   similarity_threshold: 0.85
   max_context_nodes: 5
   batch_size: 256  # For vector store operations
+
+checkpoint:
+  enable: true
+  directory: "checkpoints"
+  interval_iterations: 10
+  interval_minutes: 30.0
+  max_checkpoints: 5

@@ -71,6 +71,15 @@ class BaseVectorStore(ABC):
         pass
     
     @abstractmethod
+    async def update_node(self, node: Node) -> None:
+        """Update a node in the vector store.
+        
+        Args:
+            node: Node to update
+        """
+        pass
+    
+    @abstractmethod
     async def add_edge(self, edge: Edge) -> None:
         """Add an edge to the vector store.
         
@@ -128,5 +137,23 @@ class BaseVectorStore(ABC):
             
         Returns:
             AsyncIterator[Edge]: Matching edges
+        """
+        pass
+    
+    @abstractmethod
+    async def get_all_nodes(self) -> AsyncIterator[Node]:
+        """Get all nodes in the vector store.
+        
+        Returns:
+            AsyncIterator[Node]: All nodes
+        """
+        pass
+    
+    @abstractmethod
+    async def get_all_edges(self) -> AsyncIterator[Edge]:
+        """Get all edges in the vector store.
+        
+        Returns:
+            AsyncIterator[Edge]: All edges
         """
         pass
