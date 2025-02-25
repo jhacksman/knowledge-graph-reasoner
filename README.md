@@ -94,8 +94,9 @@ source .venv/bin/activate
 uv pip install -r requirements.txt
 
 # Set up environment variables
-cp .env.example .env
-# Edit .env with your Venice.ai API credentials
+export VENICE_API_KEY="your-api-key-here"  # Get this from Venice.ai
+export VENICE_MODEL="deepseek-r1-671b"     # The model we're using
+export MILVUS_URI="http://localhost:19530"  # Default Milvus URI if running locally
 ```
 
 #### Using pip
