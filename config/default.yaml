@@ -14,6 +14,17 @@ llm:
   base_url: https://api.venice.ai/api/v1
   max_retries: 3
   timeout: 30
+  rate_limit:
+    calls_per_minute: 15       # Maximum API calls per minute
+    calls_per_day: 10000       # Maximum API calls per day
+    tokens_per_minute: 200000  # Maximum tokens per minute
+    burst_limit: 5             # Maximum burst of requests allowed
+    retry_interval: 1.0        # Time to wait between retries in seconds
+    max_retries: 5             # Maximum number of retries
+    jitter_factor: 0.1         # Jitter factor for exponential backoff
+    storage_path: ".rate_limit_storage.db"  # Path to persistent storage
+    queue_size: 100            # Size of the request queue
+    non_urgent_timeout: 60.0   # Timeout for non-urgent requests
 
 reasoning:
   max_iterations: 3
