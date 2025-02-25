@@ -89,7 +89,7 @@ async def run_expansion(
                 EXPANSIONS[expansion_id]["updated_at"] = datetime.utcnow()
         
         # Set event handler
-        # pipeline.set_event_handler(event_handler)
+        # # pipeline.set_event_handler(event_handler)
         
         # Run expansion
         await pipeline.expand_knowledge(
@@ -98,8 +98,8 @@ async def run_expansion(
         )
         
         # Update expansion status
-        total_concepts = await len(await graph_manager.get_all_nodes()
-        total_relationships = await len(await graph_manager.get_all_edges()
+        total_concepts = len(await graph_manager.get_all_nodes())
+        total_relationships = len(await graph_manager.get_all_edges())
         
         EXPANSIONS[expansion_id].update({
             "status": "completed",
@@ -150,8 +150,8 @@ async def start_expansion(
             "id": expansion_id,
             "config": config.dict(),
             "current_iteration": 0,
-            "total_concepts": await len(await graph_manager.get_all_nodes(),
-            "total_relationships": await len(await graph_manager.get_all_edges(),
+            "total_concepts": len(await graph_manager.get_all_nodes()),
+            "total_relationships": len(await graph_manager.get_all_edges()),
             "status": "pending",
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),

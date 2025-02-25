@@ -8,10 +8,8 @@ from src.api.models import (
 from src.api.auth import get_api_key, has_permission, Permission, ApiKey
 from src.graph.manager import GraphManager
 import logging
-
 # Setup logging
 logger = logging.getLogger(__name__)
-
 # Create router
 router = APIRouter(
     prefix="/relationships",
@@ -23,8 +21,6 @@ router = APIRouter(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": ErrorResponse},
     },
 )
-
-
 @router.get(
     "",
     response_model=RelationshipList,
@@ -54,12 +50,7 @@ async def list_relationships(
         )
         
         # Get total count
-        total = await len(await graph_manager.get_all_edges(
-            source_id=source_id,
-            target_id=target_id,
-            type=type,
-        )
-        
+        total = len(await graph_manager.get_all_edges(source_id=source_id, target_id=target_id, type=type))
         # Calculate total pages
         pages = (total + pagination.limit - 1) // pagination.limit
         
@@ -76,8 +67,6 @@ async def list_relationships(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error listing relationships: {str(e)}",
         )
-
-
 @router.get(
     "/{relationship_id}",
     response_model=Relationship,
@@ -110,8 +99,6 @@ async def get_relationship(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting relationship: {str(e)}",
         )
-
-
 @router.post(
     "",
     response_model=Relationship,
@@ -160,8 +147,6 @@ async def create_relationship(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error creating relationship: {str(e)}",
         )
-
-
 @router.put(
     "/{relationship_id}",
     response_model=Relationship,
@@ -203,8 +188,6 @@ async def update_relationship(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating relationship: {str(e)}",
         )
-
-
 @router.delete(
     "/{relationship_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -238,8 +221,6 @@ async def delete_relationship(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting relationship: {str(e)}",
         )
-
-
 @router.post(
     "/batch",
     response_model=List[Relationship],

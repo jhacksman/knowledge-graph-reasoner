@@ -52,9 +52,7 @@ async def list_concepts(
         )
         
         # Get total count
-        total = await len(await graph_manager.get_all_nodes(
-            domain=domain,
-            name_contains=name_contains,
+        total = len(await graph_manager.get_all_nodes(domain=domain, name_contains=name_contains))
         )
         
         # Calculate total pages

@@ -64,7 +64,7 @@ async def execute_query(query_id: str, query_text: str, max_results: int, includ
 )
 async def list_queries(
     pagination: PaginationParams = Depends(),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: Optional[str] = FastAPIQuery(None, description="Filter by status"),
     api_key: ApiKey = Depends(get_api_key),
 ) -> QueryList:
     """Get a paginated list of queries."""
@@ -82,7 +82,7 @@ async def list_queries(
         
         # Convert to Query objects
         queries = [
-            Query(
+            FastAPIQuery(
                 id=query_id,
                 query=query["query"],
                 max_results=query["max_results"],
@@ -135,7 +135,7 @@ async def get_query(
         
         query = QUERIES[query_id]
         
-        return Query(
+        return FastAPIQuery(
             id=query_id,
             query=query["query"],
             max_results=query["max_results"],
@@ -191,7 +191,7 @@ async def create_query(
             include_reasoning=query.include_reasoning,
         )
         
-        return Query(
+        return FastAPIQuery(
             id=query_id,
             query=query.query,
             max_results=query.max_results,
