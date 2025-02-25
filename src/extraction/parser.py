@@ -19,8 +19,8 @@ class EntityRelationshipParser:
             entities and relationships
         """
         # Extract entities and relationships using regex or structured parsing
-        entities = []
-        relationships = []
+        entities: List[Dict[str, Any]] = []
+        relationships: List[Dict[str, Any]] = []
 
         # Look for structured sections in the response
         # Example format: <entity>name: description</entity>

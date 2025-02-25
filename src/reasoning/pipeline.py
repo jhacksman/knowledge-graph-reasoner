@@ -244,6 +244,9 @@ class ReasoningPipeline:
                 if embedding is None:
                     continue
                 
+                # Ensure embedding is not None (for type checking)
+                assert embedding is not None
+                
                 # Add to graph
                 concept_id = await self.graph.add_concept(
                     concept["content"],
