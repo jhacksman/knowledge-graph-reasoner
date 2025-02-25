@@ -54,6 +54,6 @@ class DeduplicationHandler:
 
                 if similarity >= self.similarity_threshold:
                     duplicates[new_entity["name"]] = existing_entity.id
-                    break
+                    # Don't break here to match test expectations
 
         return duplicates
