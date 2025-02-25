@@ -56,7 +56,7 @@ def create_venice_llm(
         )
         
         # Ensure all values are of the correct type for the config
-        config = RateLimitedVeniceLLMConfig(
+        rate_limited_config = RateLimitedVeniceLLMConfig(
             api_key=str(api_key),
             model=str(model) if model is not None else "deepseek-r1-671b",
             base_url=str(base_url) if base_url is not None else "https://api.venice.ai/api/v1",
@@ -66,7 +66,7 @@ def create_venice_llm(
             burst_limit=int(burst_limit) if burst_limit is not None else 10,
             retry_interval=float(retry_interval) if retry_interval is not None else 1.0
         )
-        return RateLimitedVeniceLLM(config)
+        return RateLimitedVeniceLLM(rate_limited_config)
     else:
         # Ensure all values are of the correct type for the config
         config = VeniceLLMConfig(
