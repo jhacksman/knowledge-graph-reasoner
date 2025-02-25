@@ -208,7 +208,9 @@ class HubFormation:
             log.error(f"Failed to analyze hub structure: {e}")
             return {
                 "error": str(e)
-            }    def _calculate_distribution(self, values) -> Dict[str, float]:
+            }
+
+    def _calculate_distribution(self, values) -> Dict[str, float]:
         """Calculate distribution statistics.
 
         Args:
