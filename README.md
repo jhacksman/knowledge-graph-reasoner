@@ -76,10 +76,38 @@ knowledge-graph-reasoner/
 
 ### Installation
 
+#### Using uv (Recommended for macOS)
+
+```bash
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone the repository
+git clone https://github.com/jhacksman/knowledge-graph-reasoner.git
+cd knowledge-graph-reasoner
+
+# Create and activate virtual environment with uv
+uv venv
+source .venv/bin/activate
+
+# Install dependencies
+uv pip install -r requirements.txt
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your Venice.ai API credentials
+```
+
+#### Using pip
+
 ```bash
 # Clone the repository
 git clone https://github.com/jhacksman/knowledge-graph-reasoner.git
 cd knowledge-graph-reasoner
+
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
