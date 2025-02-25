@@ -168,7 +168,7 @@ class HubFormation:
                 "degree_distribution": self._calculate_distribution(degree.values()),
                 "betweenness_distribution": self._calculate_distribution(betweenness.values()),
                 "eigenvector_distribution": self._calculate_distribution(eigenvector.values()),
-                "top_hubs": []
+                "top_hubs": []  # type: ignore
             }
 
             # Identify top hubs
@@ -188,7 +188,6 @@ class HubFormation:
             )[:10]
 
             # Convert to list of dictionaries with string IDs
-            hub_metrics["top_hubs"] = []  # type: ignore
             for hub_id, score in top_hubs:
                 hub_metrics["top_hubs"].append({
                     "id": str(hub_id),
