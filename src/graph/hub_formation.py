@@ -188,18 +188,15 @@ class HubFormation:
             )[:10]
 
             # Convert to list of dictionaries with string IDs
-            # Explicitly convert hub_id to string in the dictionary
-            # Type annotation for mypy
-            hub_metrics["top_hubs"] = [
-                {
+            hub_metrics["top_hubs"] = []  # type: ignore
+            for hub_id, score in top_hubs:
+                hub_metrics["top_hubs"].append({
                     "id": str(hub_id),
                     "centrality": score,
                     "degree": degree.get(hub_id, 0),
                     "betweenness": betweenness.get(hub_id, 0),
                     "eigenvector": eigenvector.get(hub_id, 0)
-                }
-                for hub_id, score in top_hubs
-            ]
+                })
 
             # Check for scale-free properties
             hub_metrics["scale_free_properties"] = self._check_scale_free_properties()
