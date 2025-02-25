@@ -1,5 +1,5 @@
 """Hub formation algorithms for self-organizing knowledge networks."""
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Collection
 import numpy as np
 import networkx as nx
 import logging
