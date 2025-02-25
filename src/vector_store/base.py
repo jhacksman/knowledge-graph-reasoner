@@ -141,7 +141,7 @@ class BaseVectorStore(ABC):
         pass
     
     @abstractmethod
-    async def get_all_nodes(self) -> AsyncIterator[Node]:
+    def get_all_nodes(self) -> AsyncIterator[Node]:
         """Get all nodes in the vector store.
         
         Returns:
@@ -150,7 +150,7 @@ class BaseVectorStore(ABC):
         pass
     
     @abstractmethod
-    async def get_all_edges(self) -> AsyncIterator[Edge]:
+    def get_all_edges(self) -> AsyncIterator[Edge]:
         """Get all edges in the vector store.
         
         Returns:

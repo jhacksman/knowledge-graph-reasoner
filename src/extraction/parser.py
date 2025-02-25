@@ -50,3 +50,37 @@ class EntityRelationshipParser:
             })
 
         return entities, relationships
+
+    async def extract_entities_and_relationships(self, text: str) -> List[Dict[str, Any]]:
+        """Extract entities and relationships from text.
+        
+        Args:
+            text: Text to extract entities and relationships from
+            
+        Returns:
+            List[Dict[str, Any]]: Extracted entities with their relationships
+        """
+        entities, relationships = self.parse_response(text)
+        
+        # Process entities and add relationships
+        result = []
+        for entity in entities:
+            entity_with_rels = entity.copy()
+            entity_with_rels["relationships"] = [
+                rel for rel in relationships 
+                if rel["source"] == entity["name"] or rel["target"] == entity["name"]
+            ]
+            result.append(entity_with_rels)
+        
+        return result
+
+    async def extract_entities(self, text: str) -> List[Dict[str, Any]]:
+        """Extract entities from text.
+        
+        Args:
+            text: Text to extract entities from
+            
+        Returns:
+            List[Dict[str, Any]]: Extracted entities
+        """
+        return await self.extract_entities_and_relationships(text)
