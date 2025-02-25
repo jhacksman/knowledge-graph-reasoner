@@ -53,7 +53,7 @@ async def get_metrics(
         advanced_analytics = AdvancedAnalytics(graph_manager)
         
         # Update graph data
-        nodes = await graph_manager.get_concepts()
+        nodes = await graph_manager.get_all_nodes()
         edges = await graph_manager.get_relationships()
         
         await metrics_tracker.update_data(nodes, edges)
@@ -134,7 +134,7 @@ async def get_metrics_time_series(
         combined_history.sort(key=lambda m: m["timestamp"])
         
         # Group by metric
-        metric_series = {}
+        metric_series: dict[str, list[dict[str, Any]]] = {}
         
         for entry in combined_history:
             timestamp = entry["timestamp"]
@@ -244,7 +244,7 @@ async def stream_metrics(
         async def metrics_generator():
             while True:
                 # Update graph data
-                nodes = await graph_manager.get_concepts()
+                nodes = await graph_manager.get_all_nodes()
                 edges = await graph_manager.get_relationships()
                 
                 await metrics_tracker.update_data(nodes, edges)

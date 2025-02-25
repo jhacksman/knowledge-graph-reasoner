@@ -54,7 +54,7 @@ async def list_relationships(
         )
         
         # Get total count
-        total = await graph_manager.count_relationships(
+        total = await len(await graph_manager.get_all_edges(
             source_id=source_id,
             target_id=target_id,
             type=type,
@@ -93,7 +93,7 @@ async def get_relationship(
     """Get a relationship by ID."""
     try:
         # Get relationship from graph manager
-        relationship = await graph_manager.get_relationship(relationship_id)
+        relationship = await graph_manager.get_edge(relationship_id)
         
         if not relationship:
             raise HTTPException(
@@ -143,7 +143,7 @@ async def create_relationship(
             )
         
         # Create relationship in graph manager
-        new_relationship = await graph_manager.create_relationship(
+        new_relationship = await graph_manager.add_edge(
             source_id=relationship.source_id,
             target_id=relationship.target_id,
             type=relationship.type,
@@ -178,7 +178,7 @@ async def update_relationship(
     """Update an existing relationship."""
     try:
         # Check if relationship exists
-        existing_relationship = await graph_manager.get_relationship(relationship_id)
+        existing_relationship = await graph_manager.get_edge(relationship_id)
         
         if not existing_relationship:
             raise HTTPException(
@@ -187,7 +187,7 @@ async def update_relationship(
             )
         
         # Update relationship in graph manager
-        updated_relationship = await graph_manager.update_relationship(
+        updated_relationship = await graph_manager.update_edge(
             relationship_id=relationship_id,
             type=relationship.type,
             weight=relationship.weight,
@@ -220,7 +220,7 @@ async def delete_relationship(
     """Delete a relationship by ID."""
     try:
         # Check if relationship exists
-        existing_relationship = await graph_manager.get_relationship(relationship_id)
+        existing_relationship = await graph_manager.get_edge(relationship_id)
         
         if not existing_relationship:
             raise HTTPException(
@@ -229,7 +229,7 @@ async def delete_relationship(
             )
         
         # Delete relationship from graph manager
-        await graph_manager.delete_relationship(relationship_id)
+        await graph_manager.delete_edge(relationship_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -274,7 +274,7 @@ async def create_relationships_batch(
                 )
             
             # Create relationship
-            new_relationship = await graph_manager.create_relationship(
+            new_relationship = await graph_manager.add_edge(
                 source_id=relationship.source_id,
                 target_id=relationship.target_id,
                 type=relationship.type,

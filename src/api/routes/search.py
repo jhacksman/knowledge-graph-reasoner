@@ -40,13 +40,15 @@ async def search_concepts(
     """Perform semantic search across concepts."""
     try:
         # Initialize LLM for embedding
-        llm = VeniceLLM()
+        llm = VeniceLLM(config=VeniceLLMConfig()
         
         # Generate embedding for query
         query_embedding = await llm.embed_text(request.query)
         
         # Search for concepts by embedding
-        concepts = await graph_manager.search_concepts_by_embedding(
+        concepts = await # Placeholder for search functionality
+        # TODO: Implement search_concepts_by_embedding in GraphManager
+        results = [
             embedding=query_embedding,
             limit=request.limit,
             threshold=request.threshold,
@@ -94,13 +96,15 @@ async def search_by_text(
     """Search concepts by text."""
     try:
         # Initialize LLM for embedding
-        llm = VeniceLLM()
+        llm = VeniceLLM(config=VeniceLLMConfig()
         
         # Generate embedding for query
         query_embedding = await llm.embed_text(text)
         
         # Search for concepts by embedding
-        concepts = await graph_manager.search_concepts_by_embedding(
+        concepts = await # Placeholder for search functionality
+        # TODO: Implement search_concepts_by_embedding in GraphManager
+        results = [
             embedding=query_embedding,
             limit=limit,
             threshold=threshold,
@@ -164,7 +168,9 @@ async def search_by_concept(
             )
         
         # Search for concepts by embedding
-        concepts = await graph_manager.search_concepts_by_embedding(
+        concepts = await # Placeholder for search functionality
+        # TODO: Implement search_concepts_by_embedding in GraphManager
+        results = [
             embedding=concept.embedding,
             limit=limit + 1,  # Add 1 to account for the concept itself
             threshold=threshold,

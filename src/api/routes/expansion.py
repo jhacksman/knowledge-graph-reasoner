@@ -32,8 +32,8 @@ router = APIRouter(
 )
 
 # In-memory storage for expansion processes (would be replaced with a database in production)
-EXPANSIONS = {}
-EXPANSION_EVENTS = {}
+EXPANSIONS: dict[str, dict[str, Any]] = {}
+EXPANSION_EVENTS: dict[str, list[dict[str, Any]]] = {}
 
 
 async def run_expansion(
@@ -89,17 +89,17 @@ async def run_expansion(
                 EXPANSIONS[expansion_id]["updated_at"] = datetime.utcnow()
         
         # Set event handler
-        pipeline.set_event_handler(event_handler)
+        # pipeline.set_event_handler(event_handler)
         
         # Run expansion
-        await pipeline.expand_knowledge_graph(
+        await pipeline.expand_knowledge(
             seed_concepts=seed_concepts,
             config=pipeline_config,
         )
         
         # Update expansion status
-        total_concepts = await graph_manager.count_concepts()
-        total_relationships = await graph_manager.count_relationships()
+        total_concepts = await len(await graph_manager.get_all_nodes()
+        total_relationships = await len(await graph_manager.get_all_edges()
         
         EXPANSIONS[expansion_id].update({
             "status": "completed",
@@ -150,8 +150,8 @@ async def start_expansion(
             "id": expansion_id,
             "config": config.dict(),
             "current_iteration": 0,
-            "total_concepts": await graph_manager.count_concepts(),
-            "total_relationships": await graph_manager.count_relationships(),
+            "total_concepts": await len(await graph_manager.get_all_nodes(),
+            "total_relationships": await len(await graph_manager.get_all_edges(),
             "status": "pending",
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),

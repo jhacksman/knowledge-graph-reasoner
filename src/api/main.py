@@ -91,7 +91,7 @@ async def custom_swagger_ui_html():
 async def add_graph_manager(request: Request, call_next):
     """Add GraphManager to request state."""
     # Initialize GraphManager
-    graph_manager = GraphManager()
+    graph_manager = GraphManager(vector_store=None, )
     
     # Add to request state
     request.state.graph_manager = graph_manager

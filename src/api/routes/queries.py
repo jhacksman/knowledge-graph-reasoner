@@ -28,7 +28,7 @@ router = APIRouter(
 )
 
 # In-memory storage for queries (would be replaced with a database in production)
-QUERIES = {}
+QUERIES: dict[str, dict[str, Any]] = {}
 
 
 async def execute_query(query_id: str, query_text: str, max_results: int, include_reasoning: bool):

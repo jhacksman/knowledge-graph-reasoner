@@ -42,7 +42,7 @@ async def list_concepts(
     """Get a paginated list of concepts with optional filtering."""
     try:
         # Get concepts from graph manager
-        concepts = await graph_manager.get_concepts(
+        concepts = await graph_manager.get_all_nodes(
             domain=domain,
             name_contains=name_contains,
             skip=(pagination.page - 1) * pagination.limit,
@@ -52,7 +52,7 @@ async def list_concepts(
         )
         
         # Get total count
-        total = await graph_manager.count_concepts(
+        total = await len(await graph_manager.get_all_nodes(
             domain=domain,
             name_contains=name_contains,
         )
@@ -130,7 +130,7 @@ async def create_concept(
     """Create a new concept."""
     try:
         # Create concept in graph manager
-        new_concept = await graph_manager.create_concept(
+        new_concept = await graph_manager.add_node(
             name=concept.name,
             description=concept.description,
             domain=concept.domain,
@@ -171,7 +171,7 @@ async def update_concept(
             )
         
         # Update concept in graph manager
-        updated_concept = await graph_manager.update_concept(
+        updated_concept = await graph_manager.update_node(
             concept_id=concept_id,
             name=concept.name,
             description=concept.description,
@@ -214,7 +214,7 @@ async def delete_concept(
             )
         
         # Delete concept from graph manager
-        await graph_manager.delete_concept(concept_id)
+        await graph_manager.delete_node(concept_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -243,7 +243,7 @@ async def create_concepts_batch(
         # Create concepts in graph manager
         new_concepts = []
         for concept in concepts:
-            new_concept = await graph_manager.create_concept(
+            new_concept = await graph_manager.add_node(
                 name=concept.name,
                 description=concept.description,
                 domain=concept.domain,
