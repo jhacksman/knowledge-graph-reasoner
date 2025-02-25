@@ -228,12 +228,12 @@ class GraphBenchmark:
             
             # Get all nodes and edges from current graph
             nodes = []
-            for node in await self.graph_manager.get_concepts():
+            for node in await self.graph_manager.get_concept():
                 nodes.append(node)
                 current_graph.add_node(node.id, content=node.content, metadata=node.metadata)
             
             edges = []
-            for edge in await self.graph_manager.get_relationships():
+            for edge in await self.graph_manager.get_relationship():
                 edges.append(edge)
                 current_graph.add_edge(
                     edge.source,
@@ -331,7 +331,7 @@ class GraphBenchmark:
             return comparison
         except Exception as e:
             log.error(f"Failed to compare with reference: {e}")
-            return {"error": str(e)}
+            return {\"error\": str(e)}
     
     async def create_reference_graph(
         self,
@@ -355,7 +355,7 @@ class GraphBenchmark:
             
             # Get all nodes and edges
             nodes = []
-            for node in await self.graph_manager.get_concepts():
+            for node in await self.graph_manager.get_concept():
                 nodes.append({
                     "id": node.id,
                     "content": node.content,
@@ -363,7 +363,7 @@ class GraphBenchmark:
                 })
             
             edges = []
-            for edge in await self.graph_manager.get_relationships():
+            for edge in await self.graph_manager.get_relationship():
                 edges.append({
                     "source": edge.source,
                     "target": edge.target,
@@ -393,7 +393,7 @@ class GraphBenchmark:
             }
         except Exception as e:
             log.error(f"Failed to create reference graph: {e}")
-            return {"error": str(e)}
+            return {\"error\": str(e)}
     
     def list_reference_graphs(self) -> List[Dict[str, Any]]:
         """List available reference graphs.

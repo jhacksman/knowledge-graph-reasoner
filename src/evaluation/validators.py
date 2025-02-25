@@ -1,5 +1,5 @@
 """Validation module for knowledge graph reasoner."""
-from typing import List, Dict, Any, Optional, Set, Tuple, AsyncIterator
+from typing import Dict, Any, List, Dict, Any, Optional, Set, Tuple, AsyncIterator
 import logging
 import numpy as np
 
@@ -405,11 +405,11 @@ class GraphValidator:
         try:
             # Get all nodes and edges
             nodes = []
-            for node in await graph_manager.get_concepts():
+            for node in await graph_manager.get_concept():
                 nodes.append(node)
             
             edges = []
-            for edge in await graph_manager.get_relationships():
+            for edge in await graph_manager.get_relationship():
                 edges.append(edge)
             
             # Get timestamp
