@@ -195,7 +195,7 @@ class HubFormation:
                     "degree": degree.get(hub_id, 0),
                     "betweenness": betweenness.get(hub_id, 0),
                     "eigenvector": eigenvector.get(hub_id, 0)
-                }
+                })
             # Assign the properly typed list
             hub_metrics["top_hubs"] = top_hubs_list
 
