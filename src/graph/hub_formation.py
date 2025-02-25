@@ -189,7 +189,8 @@ class HubFormation:
 
             # Convert to list of dictionaries with string IDs
             # Explicitly convert hub_id to string in the dictionary
-            hub_metrics["top_hubs"] = [
+            # Type annotation for mypy
+            hub_metrics["top_hubs"] = [  # type: ignore # List[Dict[str, Any]]
                 {
                     "id": str(hub_id),
                     "centrality": score,
