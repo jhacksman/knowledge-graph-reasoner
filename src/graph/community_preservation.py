@@ -128,7 +128,7 @@ class CommunityPreservation:
                                     # Update relationship metadata
                                     metadata = rel.metadata or {}
                                     metadata["community_preserved"] = True
-                                    metadata["community_id"] = self.node_to_community.get(node1)
+                                    metadata["community_id"] = self.node_to_community.get(node1, 0)
 
                                     # Update relationship
                                     await graph_manager.update_relationship(
@@ -204,7 +204,7 @@ class CommunityPreservation:
 
             # Calculate overall stability score (average of best match similarities)
             if matched_communities:
-                stability_metrics["stability_score"] = sum(float(m["similarity"]) for m in matched_communities) / len(matched_communities)
+                stability_metrics["stability_score"] = sum(float(m.get("similarity", 0.0)) for m in matched_communities) / len(matched_communities)
             else:
                 stability_metrics["stability_score"] = 0.0
 

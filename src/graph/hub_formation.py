@@ -187,6 +187,7 @@ class HubFormation:
                 reverse=True
             )[:10]
 
+            # Convert to list of dictionaries with string IDs
             hub_metrics["top_hubs"] = [
                 {
                     "id": str(hub_id),
