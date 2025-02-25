@@ -189,7 +189,7 @@ class HubFormation:
 
             # Convert to list of dictionaries with string IDs
             # Explicitly convert hub_id to string in the dictionary
-hub_metrics["top_hubs"] = [
+            hub_metrics["top_hubs"] = [
                 {
                     "id": str(hub_id),
                     "centrality": score,
