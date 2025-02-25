@@ -70,9 +70,10 @@ class MockGraphManager(GraphManager):
         """Get concept from graph."""
         return Node(id=id, content="Test concept")
 
-    async def add_relationship(self, source_id: str, target_id: str, type: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def add_relationship(self, source_id: str, target_id: str, type: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """Add relationship to graph."""
-        return "relationship_id"
+        # Return None to match the parent class signature
+        return None
 
     async def get_relationship(self, id: str) -> Optional[Edge]:
         """Get relationship from graph."""

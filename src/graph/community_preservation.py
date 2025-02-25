@@ -17,8 +17,8 @@ class CommunityPreservation:
             graph: NetworkX graph
         """
         self.graph = graph
-        self.communities = []
-        self.node_to_community = {}
+        self.communities: List[Set[str]] = []
+        self.node_to_community: Dict[str, int] = {}
 
     async def detect_communities(self) -> List[Set[str]]:
         """Detect communities using Louvain method.
@@ -181,7 +181,7 @@ class CommunityPreservation:
                     # Calculate Jaccard similarity
                     intersection = len(prev_comm.intersection(curr_comm))
                     union = len(prev_comm.union(curr_comm))
-                    similarity = intersection / union if union > 0 else 0
+                    similarity = float(intersection) / float(union) if union > 0 else 0.0
                     similarities.append(similarity)
                 similarity_matrix.append(similarities)
 
@@ -204,9 +204,9 @@ class CommunityPreservation:
 
             # Calculate overall stability score (average of best match similarities)
             if matched_communities:
-                stability_metrics["stability_score"] = sum(m["similarity"] for m in matched_communities) / len(matched_communities)
+                stability_metrics["stability_score"] = sum(float(m["similarity"]) for m in matched_communities) / len(matched_communities)
             else:
-                stability_metrics["stability_score"] = 0
+                stability_metrics["stability_score"] = 0.0
 
             return stability_metrics
 

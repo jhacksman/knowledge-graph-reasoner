@@ -189,7 +189,7 @@ class HubFormation:
 
             hub_metrics["top_hubs"] = [
                 {
-                    "id": hub_id,
+                    "id": str(hub_id),
                     "centrality": score,
                     "degree": degree.get(hub_id, 0),
                     "betweenness": betweenness.get(hub_id, 0),
