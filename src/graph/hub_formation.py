@@ -164,11 +164,11 @@ class HubFormation:
             eigenvector = nx.eigenvector_centrality(self.metrics.graph, max_iter=1000)
 
             # Calculate hub metrics
-            hub_metrics = {
+            hub_metrics: Dict[str, Any] = {
                 "degree_distribution": self._calculate_distribution(degree.values()),
                 "betweenness_distribution": self._calculate_distribution(betweenness.values()),
                 "eigenvector_distribution": self._calculate_distribution(eigenvector.values()),
-                "top_hubs": []  # type: ignore
+                "top_hubs": []
             }
 
             # Identify top hubs
@@ -188,16 +188,16 @@ class HubFormation:
             )[:10]
 
             # Convert to list of dictionaries with string IDs
-            for hub_id, score in top_hubs:
-                hub_metrics["top_hubs"].append({
+            hub_metrics["top_hubs"] = [
+                {
                     "id": str(hub_id),
                     "centrality": score,
                     "degree": degree.get(hub_id, 0),
                     "betweenness": betweenness.get(hub_id, 0),
                     "eigenvector": eigenvector.get(hub_id, 0)
-                })
-            # Assign the properly typed list
-            hub_metrics["top_hubs"] = top_hubs_list
+                }
+                for hub_id, score in top_hubs
+            ]
 
             # Check for scale-free properties
             hub_metrics["scale_free_properties"] = self._check_scale_free_properties()
@@ -208,9 +208,7 @@ class HubFormation:
             log.error(f"Failed to analyze hub structure: {e}")
             return {
                 "error": str(e)
-            }
-
-    def _calculate_distribution(self, values) -> Dict[str, float]:
+            }    def _calculate_distribution(self, values) -> Dict[str, float]:
         """Calculate distribution statistics.
 
         Args:
