@@ -1,5 +1,5 @@
 """Core evaluation metrics for knowledge graphs."""
-from typing import List, Dict, Any, Optional, Set, Tuple, AsyncIterator
+from typing import List, Dict, Any, Optional, Set, Tuple, AsyncIterator, Collection
 import numpy as np
 import networkx as nx
 import logging
@@ -145,7 +145,7 @@ class GraphEvaluator:
         try:
             # Get all nodes
             nodes = []
-            for node in await self.graph_manager.get_all_concepts():
+            for node in await self.graph_manager.get_concept():
                 nodes.append(node)
             
             if not nodes:
@@ -197,7 +197,7 @@ class GraphEvaluator:
             
             # Get all edges
             edges = []
-            for edge in await self.graph_manager.get_all_relationships():
+            for edge in await self.graph_manager.get_relationship():
                 edges.append(edge)
                 total_edges += 1
             
@@ -352,8 +352,8 @@ class GraphEvaluator:
             # For now, just compute for a sample of nodes
             novelty_scores = []
             node_count = 0
-            for node in await self.graph_manager.get_all_concepts():
-                novelty = await self.compute_novelty_score(node if node is not None else Node(id='dummy', content='', metadata={}))
+            for node in await self.graph_manager.get_concept():
+                novelty = await self.compute_novelty_score(node if node is not None else Node(id='dummy', content='', metadata={}))  # type: ignore  # type: ignore
                 novelty_scores.append(novelty)
                 node_count += 1
                 if node_count >= 10:  # Limit to 10 nodes for performance

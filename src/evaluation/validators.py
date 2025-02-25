@@ -1,5 +1,5 @@
 """Validation module for knowledge graph reasoner."""
-from typing import List, Dict, Any, Optional, Set, Tuple, AsyncIterator
+from typing import Dict, Any, List, Dict, Any, Optional, Set, Tuple, AsyncIterator
 import logging
 import numpy as np
 
@@ -29,7 +29,7 @@ class EntityValidator:
     
     async def validate_entity(self, node: Node) -> Dict[str, Any]:
         """Validate entity."""
-        results = {
+        results: Dict[str, Any] = {
             "id": node.id,
             "valid": True,
             "issues": []
@@ -83,7 +83,7 @@ class RelationshipValidator:
         target_node: Optional[Node] = None
     ) -> Dict[str, Any]:
         """Validate relationship."""
-        results = {
+        results: Dict[str, Any] = {
             "source": edge.source,
             "target": edge.target,
             "type": edge.type,
@@ -128,7 +128,7 @@ class DomainValidator:
     
     async def validate_domain_relevance(self, node: Node) -> Dict[str, Any]:
         """Validate domain relevance."""
-        results = {
+        results: Dict[str, Any] = {
             "id": node.id,
             "domain": self.domain,
             "relevant": False,
@@ -168,7 +168,7 @@ class CoherenceValidator:
         nodes: List[Node]
     ) -> Dict[str, Any]:
         """Validate community coherence."""
-        results = {
+        results: Dict[str, Any] = {
             "node_count": len(nodes),
             "coherent": True,
             "coherence_score": 0.0,
@@ -261,7 +261,7 @@ class CrossDomainValidator:
         Returns:
             Dict[str, Any]: Validation results
         """
-        results = {
+        results: Dict[str, Any] = {
             "node_count": len(nodes),
             "edge_count": len(edges),
             "valid": True,
@@ -382,7 +382,7 @@ class GraphValidator:
         Returns:
             Dict[str, Any]: Validation results
         """
-        results = {
+        results: Dict[str, Any] = {
             "timestamp": None,
             "valid": True,
             "entity_validation": {
@@ -405,11 +405,11 @@ class GraphValidator:
         try:
             # Get all nodes and edges
             nodes = []
-            for node in await graph_manager.get_all_concepts():
+            for node in await graph_manager.get_concept():
                 nodes.append(node)
             
             edges = []
-            for edge in await graph_manager.get_all_relationships():
+            for edge in await graph_manager.get_relationship():
                 edges.append(edge)
             
             # Get timestamp
@@ -500,7 +500,7 @@ class GraphValidator:
             
             # Validate domains
             if self.domain_validators:
-                domain_results = {}
+                domain_results: Dict[str, Any] = {}
                 
                 for validator in self.domain_validators:
                     domain_nodes = []
