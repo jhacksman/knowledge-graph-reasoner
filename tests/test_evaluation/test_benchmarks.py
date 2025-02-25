@@ -374,7 +374,7 @@ async def test_run_standard_benchmark(mock_graph_manager, mock_pipeline, mock_ev
         )
         
         # Run standard benchmark
-        result = await benchmark.run_standard_benchmark(
+        result = await benchmark.run_standard_benchmarks(
             domain="science",
             max_iterations=3
         )
