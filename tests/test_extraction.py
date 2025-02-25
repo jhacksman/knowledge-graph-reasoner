@@ -26,9 +26,7 @@ class TestEntityRelationshipParser(unittest.TestCase):
 
     def test_parse_relationship(self):
         """Test parsing of relationship format."""
-        response = "<relationship>concept1: concept2: relates_to:
-            description</relationship>
-        "
+        response = "<relationship>concept1: concept2: relates_to: description</relationship>"
         entities, relationships = self.parser.parse_response(response)
 
         self.assertEqual(len(entities), 0)
