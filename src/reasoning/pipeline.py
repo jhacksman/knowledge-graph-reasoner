@@ -442,6 +442,8 @@ Focus on concepts that would:
             for d in diameters
         ):
             return False
+            
+        return True
     async def generate(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """Generate a response to a prompt.
         
@@ -519,33 +521,3 @@ Focus on concepts that would:
         except Exception as e:
             log.error(f"Failed to create manual checkpoint: {e}")
             return {"success": False, "message": f"Failed to create checkpoint: {e}"}
-        
-    async def _check_stability(self) -> bool:
-        """Check if graph has reached stable state.
-
-        Returns:
-            bool: True if stable
-        """
-        if len(self.metric_history) < self.stability_window:
-            return False
-
-        # Get recent metrics
-        recent = self.metric_history[-self.stability_window:]
-
-        # Check path length stability
-        path_lengths = [m["avg_path_length"] for m in recent]
-        if not all(
-            self.min_path_length <= path_len <= self.max_path_length
-            for path_len in path_lengths
-        ):
-            return False
-
-        # Check diameter stability
-        diameters = [m.get("diameter", 0) for m in recent]
-        if not all(
-            self.min_diameter <= d <= self.max_diameter
-            for d in diameters
-        ):
-            return False
-            
-        return True

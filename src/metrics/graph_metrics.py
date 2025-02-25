@@ -13,6 +13,7 @@ class GraphMetrics:
     def __init__(self):
         """Initialize metrics tracker."""
         self.graph = nx.Graph()
+        self._history: List[Dict[str, Any]] = []
     
     async def compute_modularity(self) -> float:
         """Compute graph modularity score.
@@ -114,3 +115,24 @@ class GraphMetrics:
             self.graph.add_edges_from(edge_tuples)
         except Exception as e:
             log.error(f"Failed to update graph: {e}")
+    
+    async def get_history(self) -> List[Dict[str, Any]]:
+        """Get metrics history.
+        
+        Returns:
+            List[Dict[str, Any]]: Metrics history
+        """
+        # In a real implementation, this would return stored metrics history
+        # For now, return the history list as a placeholder
+        return self._history
+    
+    async def set_history(self, history: List[Dict[str, Any]]) -> None:
+        """Set metrics history.
+        
+        Args:
+            history: Metrics history to set
+        """
+        # In a real implementation, this would store the metrics history
+        # For now, just set the history and log that it was set
+        self._history = history
+        log.info(f"Set metrics history with {len(history)} entries")

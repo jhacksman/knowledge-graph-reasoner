@@ -269,55 +269,61 @@ class MilvusStore(BaseVectorStore):
         except Exception as e:
             raise MilvusError(f"Failed to update node: {e}")
     
-    async def get_all_nodes(self) -> AsyncIterator[Node]:
+    def get_all_nodes(self) -> AsyncIterator[Node]:
         """Get all nodes in the vector store.
         
         Returns:
             AsyncIterator[Node]: All nodes
         """
-        await self.initialize()
-        
-        try:
-            # Query all nodes
-            results = self.client.query(
-                collection_name=f"{self.default_collection}_nodes",
-                filter=None,  # No filter means all nodes
-                output_fields=["*"]
-            )
+        async def _get_all_nodes():
+            await self.initialize()
             
-            for entity in results:
-                yield Node(
-                    id=entity["id"],
-                    content=entity["content"],
-                    metadata=entity["metadata"]
+            try:
+                # Query all nodes
+                results = self.client.query(
+                    collection_name=f"{self.default_collection}_nodes",
+                    filter=None,  # No filter means all nodes
+                    output_fields=["*"]
                 )
-                await asyncio.sleep(0)  # Allow other coroutines to run
-        except Exception as e:
-            raise MilvusError(f"Failed to get all nodes: {e}")
+                
+                for entity in results:
+                    yield Node(
+                        id=entity["id"],
+                        content=entity["content"],
+                        metadata=entity["metadata"]
+                    )
+                    await asyncio.sleep(0)  # Allow other coroutines to run
+            except Exception as e:
+                raise MilvusError(f"Failed to get all nodes: {e}")
+                
+        return _get_all_nodes()
     
-    async def get_all_edges(self) -> AsyncIterator[Edge]:
+    def get_all_edges(self) -> AsyncIterator[Edge]:
         """Get all edges in the vector store.
         
         Returns:
             AsyncIterator[Edge]: All edges
         """
-        await self.initialize()
-        
-        try:
-            # Query all edges
-            results = self.client.query(
-                collection_name=f"{self.default_collection}_edges",
-                filter=None,  # No filter means all edges
-                output_fields=["*"]
-            )
+        async def _get_all_edges():
+            await self.initialize()
             
-            for entity in results:
-                yield Edge(
-                    source=entity["source"],
-                    target=entity["target"],
-                    type=entity["type"],
-                    metadata=entity["metadata"]
+            try:
+                # Query all edges
+                results = self.client.query(
+                    collection_name=f"{self.default_collection}_edges",
+                    filter=None,  # No filter means all edges
+                    output_fields=["*"]
                 )
-                await asyncio.sleep(0)  # Allow other coroutines to run
-        except Exception as e:
-            raise MilvusError(f"Failed to get all edges: {e}")
+                
+                for entity in results:
+                    yield Edge(
+                        source=entity["source"],
+                        target=entity["target"],
+                        type=entity["type"],
+                        metadata=entity["metadata"]
+                    )
+                    await asyncio.sleep(0)  # Allow other coroutines to run
+            except Exception as e:
+                raise MilvusError(f"Failed to get all edges: {e}")
+                
+        return _get_all_edges()
