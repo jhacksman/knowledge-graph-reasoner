@@ -192,5 +192,8 @@ async def test_concept_integration(pipeline, mock_graph):
     
     await pipeline._integrate_concepts(concepts)
     
-    mock_graph.add_concept.assert_called_once()
+    # We expect two calls to add_concept:
+    # 1. For the main concept
+    # 2. For the target of the relationship
+    assert mock_graph.add_concept.call_count == 2
     assert mock_graph.add_relationship.call_count >= 1
