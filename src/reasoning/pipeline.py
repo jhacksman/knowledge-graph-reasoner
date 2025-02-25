@@ -2,10 +2,13 @@
 from typing import List, Dict, Any, Optional
 import logging
 import asyncio
+import random
 
 from .llm import VeniceLLM
 from ..graph.manager import GraphManager
 from ..models.node import Node
+from ..extraction.parser import EntityRelationshipParser
+from ..extraction.deduplication import DeduplicationHandler
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +25,8 @@ class ReasoningPipeline:
         min_path_length: float = 4.5,
         max_path_length: float = 5.0,
         min_diameter: float = 16.0,
-        max_diameter: float = 18.0
+        max_diameter: float = 18.0,
+        similarity_threshold: float = 0.85
     ):
         """Initialize pipeline.
         
@@ -35,6 +39,7 @@ class ReasoningPipeline:
             max_path_length: Target maximum average path length
             min_diameter: Target minimum graph diameter
             max_diameter: Target maximum graph diameter
+            similarity_threshold: Threshold for entity deduplication
         """
         self.llm = llm
         self.graph = graph
@@ -45,6 +50,10 @@ class ReasoningPipeline:
         self.min_diameter = min_diameter
         self.max_diameter = max_diameter
         
+        # Add extraction components
+        self.parser = EntityRelationshipParser()
+        self.deduplication = DeduplicationHandler(similarity_threshold)
+        
         # Track metrics history
         self.metric_history: List[Dict[str, Any]] = []
     
@@ -54,11 +63,11 @@ class ReasoningPipeline:
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Iteratively expand knowledge graph.
-        
+
         Args:
             seed_concept: Initial concept
             context: Optional context for reasoning
-            
+
         Returns:
             Dict[str, Any]: Final graph state
         """
@@ -66,36 +75,56 @@ class ReasoningPipeline:
             # Initialize with seed concept
             embedding = await self.llm.embed_text(seed_concept)
             await self.graph.add_concept(seed_concept, embedding)
-            
+
+            # Track focus concept
+            focus_concept = seed_concept
+
             # Iterative expansion
             for i in range(self.max_iterations):
                 log.info(f"Starting iteration {i+1}")
-                
+
                 # Get current graph state
                 state = await self.graph.get_graph_state()
                 self.metric_history.append(state)
-                
+
                 # Generate new concepts
                 concepts = await self._generate_concepts(
-                    seed_concept,
+                    focus_concept,
                     state,
                     context
                 )
-                
+
                 # Add new concepts and relationships
-                await self._integrate_concepts(concepts)
-                
+                new_nodes = await self._integrate_concepts(concepts)
+
+                # Update focus concept if new nodes were added
+                if new_nodes and len(new_nodes) > 0:
+                    # Choose a new focus concept from bridge nodes or recent additions
+                    if state.get("bridge_nodes") and len(state["bridge_nodes"]) > 0:
+                        # 50% chance to focus on a bridge node
+                        if random.random() < 0.5:
+                            bridge_id = state["bridge_nodes"][0]
+                            bridge_node = await self.graph.get_concept(bridge_id)
+                            if bridge_node:
+                                focus_concept = bridge_node.content
+                        else:
+                            # Focus on a new node
+                            focus_concept = new_nodes[0].content
+                    else:
+                        # Focus on a new node
+                        focus_concept = new_nodes[0].content
+
                 # Check stability
                 if await self._check_stability():
                     log.info("Graph reached stable state")
                     break
-                
+
                 # Rate limiting
                 await asyncio.sleep(1)
-            
+
             # Get final state
             return await self.graph.get_graph_state()
-        
+
         except Exception as e:
             log.error(f"Knowledge expansion failed: {e}")
             raise
@@ -116,12 +145,17 @@ class ReasoningPipeline:
         Returns:
             List[Dict[str, Any]]: New concepts with metadata
         """
-        # Construct prompt
+        # Construct prompt with structured output format
         prompt = self._build_generation_prompt(
             seed_concept,
             state,
             context
         )
+        
+        # Add instructions for structured output
+        prompt += "\n\nFormat your response with entities and relationships in this format:\n"
+        prompt += "<entity>entity_name: entity_description</entity>\n"
+        prompt += "<relationship>source_entity: target_entity: relationship_type: description</relationship>"
         
         # Get LLM response
         response = await self.llm.generate([{
@@ -132,17 +166,23 @@ class ReasoningPipeline:
             "content": prompt
         }])
         
-        # Parse response
+        # Parse response using the entity-relationship parser
         try:
             content = response["choices"][0]["message"]["content"]
-            concepts = []
+            entities, relationships = self.parser.parse_response(content)
             
-            for line in content.split("\n"):
-                if line.strip():
-                    concepts.append({
-                        "content": line.strip(),
-                        "metadata": {}
-                    })
+            # Process entities and get embeddings
+            concepts = []
+            for entity in entities:
+                concepts.append({
+                    "name": entity["name"],
+                    "content": entity["content"],
+                    "metadata": entity["metadata"],
+                    "relationships": [
+                        rel for rel in relationships 
+                        if rel["source"] == entity["name"] or rel["target"] == entity["name"]
+                    ]
+                })
             
             return concepts
         except Exception as e:
@@ -152,16 +192,57 @@ class ReasoningPipeline:
     async def _integrate_concepts(
         self,
         concepts: List[Dict[str, Any]]
-    ) -> None:
+    ) -> List[Node]:
         """Integrate new concepts into graph.
         
         Args:
             concepts: New concepts to integrate
+            
+        Returns:
+            List[Node]: List of newly added nodes
         """
+        # Get embeddings for all concepts
+        embeddings = {}
         for concept in concepts:
             try:
-                # Get embedding
                 embedding = await self.llm.embed_text(concept["content"])
+                embeddings[concept["name"]] = embedding
+            except Exception as e:
+                log.error(f"Failed to get embedding for concept {concept['name']}: {e}")
+        
+        # Get existing nodes for deduplication
+        existing_nodes = []
+        for concept in concepts:
+            if concept["name"] in embeddings:
+                similar = await self.graph.get_similar_concepts(
+                    embeddings[concept["name"]],
+                    k=5,
+                    threshold=0.7
+                )
+                existing_nodes.extend(similar)
+        
+        # Find duplicates
+        duplicates = self.deduplication.find_duplicates(
+            concepts,
+            existing_nodes,
+            embeddings
+        )
+        
+        # Add new concepts and track added nodes
+        added_nodes = []
+        concept_id_map = {}  # Map concept names to IDs
+        
+        for concept in concepts:
+            try:
+                # Skip if duplicate
+                if concept["name"] in duplicates:
+                    concept_id_map[concept["name"]] = duplicates[concept["name"]]
+                    continue
+                
+                # Get embedding
+                embedding = embeddings.get(concept["name"])
+                if embedding is None:
+                    continue
                 
                 # Add to graph
                 concept_id = await self.graph.add_concept(
@@ -170,25 +251,41 @@ class ReasoningPipeline:
                     concept["metadata"]
                 )
                 
-                # Find similar concepts
-                similar = await self.graph.get_similar_concepts(
-                    embedding,
-                    k=3,
-                    threshold=0.7
-                )
-                
-                # Add relationships
-                for node in similar:
-                    if node.id != concept_id:
-                        await self.graph.add_relationship(
-                            concept_id,
-                            node.id,
-                            "related"
-                        )
+                # Store mapping and added node
+                concept_id_map[concept["name"]] = concept_id
+                node = await self.graph.get_concept(concept_id)
+                if node:
+                    added_nodes.append(node)
             
             except Exception as e:
-                log.error(f"Failed to integrate concept: {e}")
+                log.error(f"Failed to integrate concept {concept['name']}: {e}")
                 continue
+        
+        # Add relationships
+        for concept in concepts:
+            if "relationships" in concept and concept["name"] in concept_id_map:
+                source_id = concept_id_map[concept["name"]]
+                
+                for rel in concept["relationships"]:
+                    try:
+                        # Skip if target doesn't exist
+                        if rel["target"] not in concept_id_map:
+                            continue
+                        
+                        target_id = concept_id_map[rel["target"]]
+                        
+                        # Add relationship
+                        await self.graph.add_relationship(
+                            source_id,
+                            target_id,
+                            rel["type"],
+                            {"description": rel.get("description", "")}
+                        )
+                    except Exception as e:
+                        log.error(f"Failed to add relationship: {e}")
+                        continue
+        
+        return added_nodes
     
     def _build_generation_prompt(
         self,
@@ -228,26 +325,30 @@ Focus on concepts that would:
     
     async def _check_stability(self) -> bool:
         """Check if graph has reached stable state.
-        
+
         Returns:
             bool: True if stable
         """
         if len(self.metric_history) < self.stability_window:
             return False
-        
+
         # Get recent metrics
         recent = self.metric_history[-self.stability_window:]
-        
+
         # Check path length stability
         path_lengths = [m["avg_path_length"] for m in recent]
-        if not all(self.min_path_length <= l <= self.max_path_length
-                  for l in path_lengths):
+        if not all(
+            self.min_path_length <= path_len <= self.max_path_length
+            for path_len in path_lengths
+        ):
             return False
-        
+
         # Check diameter stability
         diameters = [m.get("diameter", 0) for m in recent]
-        if not all(self.min_diameter <= d <= self.max_diameter
-                  for d in diameters):
+        if not all(
+            self.min_diameter <= d <= self.max_diameter
+            for d in diameters
+        ):
             return False
-        
+
         return True
