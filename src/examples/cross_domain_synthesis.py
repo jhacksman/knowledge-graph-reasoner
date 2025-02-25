@@ -56,7 +56,7 @@ class CrossDomainSynthesisExample:
         from src.vector_store.base import BaseVectorStore
         
         # Create mock objects for type checking
-        config = VeniceLLMConfig(api_key=None)  # API key should be provided via environment variables
+        config = VeniceLLMConfig(api_key="")  # Empty string for type checking, real key from env vars
         self.llm = VeniceLLM(config)
         
         # Mock GraphManager
