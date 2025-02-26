@@ -75,19 +75,8 @@ async def list_relationships(
         pages = (total + pagination.limit - 1) // pagination.limit
         
         # Convert Edge objects to Relationship objects
-        relationship_items = []
-        for edge in relationships:
-            # Create a Relationship from each Edge
-            relationship_items.append(Relationship(
-                id=getattr(edge, "id", str(uuid.uuid4())),
-                source_id=edge.source,
-                target_id=edge.target,
-                type=edge.type,
-                weight=edge.metadata.get("weight", 1.0),
-                attributes=edge.metadata.get("attributes", {}),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            ))
+        from src.api.adapters import edges_to_relationships
+        relationship_items = edges_to_relationships(relationships)
         
         return RelationshipList(
             items=relationship_items,
@@ -127,16 +116,8 @@ async def get_relationship(
             )
         
         # Convert Edge to Relationship
-        return Relationship(
-            id=getattr(edge, "id", relationship_id),
-            source_id=edge.source,
-            target_id=edge.target,
-            type=edge.type,
-            weight=edge.metadata.get("weight", 1.0),
-            attributes=edge.metadata.get("attributes", {}),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
+        from src.api.adapters import edge_to_relationship
+        return edge_to_relationship(edge)
     except HTTPException:
         raise
     except Exception as e:
@@ -191,16 +172,8 @@ async def create_relationship(
         # Convert Edge to Relationship if needed
         if new_relationship:
             # Convert Edge to Relationship
-            return Relationship(
-                id=getattr(new_relationship, "id", str(uuid.uuid4())),
-                source_id=relationship.source_id,
-                target_id=relationship.target_id,
-                type=relationship.type,
-                weight=relationship.weight or 1.0,
-                attributes=relationship.attributes or {},
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
+            from src.api.adapters import edge_to_relationship
+            return edge_to_relationship(new_relationship)
         
         # If no relationship was found, return a default one
         return Relationship(
@@ -271,16 +244,11 @@ async def update_relationship(
         # Convert Edge to Relationship if needed
         if updated_edge:
             # Convert Edge to Relationship
-            return Relationship(
-                id=relationship_id,
-                source_id=updated_edge.source,
-                target_id=updated_edge.target,
-                type=updated_edge.type,
-                weight=updated_edge.metadata.get("weight", 1.0),
-                attributes=updated_edge.metadata.get("attributes", {}),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
+            from src.api.adapters import edge_to_relationship
+            relationship = edge_to_relationship(updated_edge)
+            # Ensure we use the original relationship ID
+            relationship.id = relationship_id
+            return relationship
         
         # If no relationship was found, return a default one
         return Relationship(
@@ -386,16 +354,8 @@ async def create_relationships_batch(
             )
             # Create a Relationship object from the Edge
             if edges:
-                new_relationship = Relationship(
-                    id=getattr(edges[-1], "id", str(uuid.uuid4())),
-                    source_id=relationship.source_id,
-                    target_id=relationship.target_id,
-                    type=relationship.type,
-                    weight=relationship.weight or 1.0,
-                    attributes=relationship.attributes or {},
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
+                from src.api.adapters import edge_to_relationship
+                new_relationship = edge_to_relationship(edges[-1])
             else:
                 new_relationship = None
             new_relationships.append(new_relationship)
