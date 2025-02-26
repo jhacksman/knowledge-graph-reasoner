@@ -38,13 +38,18 @@ async def list_relationships(
     graph_manager: GraphManager = Depends(),
     api_key: ApiKey = Depends(get_api_key),
 ) -> RelationshipList:
-    """Get a paginated list of relationships with optional filtering."""
+    """Get a paginated list of relationships with optional filtering.
+    
+    Note: The 'type' parameter is mapped to 'relationship_type' when calling GraphManager methods.
+    API models use 'type' while GraphManager uses 'relationship_type' for the same concept.
+    """
     try:
         # Get relationships from graph manager
+        # Note: 'type' parameter is mapped to 'relationship_type' for GraphManager
         relationships = await graph_manager.get_relationships(
             source_id=source_id,
             target_id=target_id,
-            relationship_type=type
+            relationship_type=type  # API uses 'type', GraphManager uses 'relationship_type'
         )
         
         # Apply pagination manually since GraphManager doesn't support it directly
@@ -64,6 +69,7 @@ async def list_relationships(
         relationships = relationships[start_idx:end_idx]
         
         # Get total count
+        # Note: 'type' parameter is mapped to 'relationship_type' for GraphManager
         total = len(await graph_manager.get_relationships(source_id=source_id, target_id=target_id, relationship_type=type))
         # Calculate total pages
         pages = (total + pagination.limit - 1) // pagination.limit
@@ -170,15 +176,9 @@ async def create_relationship(
             )
         
         # Create relationship in graph manager
-        await graph_manager.add_relationship(
-            source_id=relationship.source_id,
-            target_id=relationship.target_id,
-            relationship_type=relationship.type,
-            metadata={
-                "weight": relationship.weight,
-                "attributes": relationship.attributes
-            }
-        )
+        from src.api.adapters import map_relationship_params
+        params = map_relationship_params(relationship)
+        await graph_manager.add_relationship(**params)
         
         # Since add_relationship doesn't return the relationship, we need to retrieve it
         relationships = await graph_manager.get_relationships(
@@ -251,6 +251,8 @@ async def update_relationship(
         # 2. Create a new relationship with the updated values
         
         # Create a new relationship with updated values
+        # Instead of using the adapter function, create parameters directly
+        # This avoids the type error with map_relationship_params
         await graph_manager.add_relationship(
             source_id=existing_relationship.source,
             target_id=existing_relationship.target,
@@ -372,15 +374,9 @@ async def create_relationships_batch(
                 )
             
             # Create relationship
-            await graph_manager.add_relationship(
-                source_id=relationship.source_id,
-                target_id=relationship.target_id,
-                relationship_type=relationship.type,
-                metadata={
-                    "weight": relationship.weight,
-                    "attributes": relationship.attributes
-                }
-            )
+            from src.api.adapters import map_relationship_params
+            params = map_relationship_params(relationship)
+            await graph_manager.add_relationship(**params)
             
             # Since add_relationship doesn't return the relationship, we need to retrieve it
             edges = await graph_manager.get_relationships(
