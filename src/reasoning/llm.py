@@ -115,4 +115,6 @@ class VeniceLLM:
             }
         )
         response.raise_for_status()
-        return await response.json()
+        data = await response.json()
+
+        return dict(data)

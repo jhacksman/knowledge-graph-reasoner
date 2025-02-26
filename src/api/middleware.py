@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 import logging
+import uuid
 from datetime import datetime, timedelta
 import json
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -108,6 +109,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.rate_limiter = RateLimiter()
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Set request ID
+        request.state.request.state.request_id = str(uuid.uuid4())
         """Process the request."""
         # Skip rate limiting for certain paths
         if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
@@ -195,6 +198,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for logging requests."""
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Set request ID
+        request.state.request.state.request_id = str(uuid.uuid4())
         """Process the request."""
         # Skip rate limiting for certain paths
         if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
@@ -250,7 +255,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             # Log exception
             logger.exception(
                 f"Request failed: method={request.method}, "
-                f"path={request.url.path}, error={str(e)}, request_id={request_id}"
+                f"path={request.url.path}, error={str(e)}, request.state.request_id={request.state.request_id}"
             )
             
             # Re-raise the exception
