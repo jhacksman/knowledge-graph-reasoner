@@ -1,6 +1,7 @@
 """Tests for reasoning pipeline."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+import asyncio
 import numpy as np
 from typing import List, Dict, Any, Optional, AsyncIterator
 
@@ -51,6 +52,8 @@ class MockVectorStore(BaseVectorStore):
         ]
         for edge in edges:
             yield edge
+            await asyncio.sleep(0)  # Allow other coroutines to run
+            await asyncio.sleep(0)  # Allow other coroutines to run
 
 
 @pytest.fixture

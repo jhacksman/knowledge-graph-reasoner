@@ -38,7 +38,7 @@ router = APIRouter(
     response_model=MetricsResponse,
     summary="Get metrics",
     description="Get current graph metrics",
-    dependencies=[Depends(has_permission(Permission.READ_METRICS))],
+    dependencies=[Depends(has_permission(Permission.READ_METRICS.value))],
 )
 async def get_metrics(
     request: MetricsRequest,
@@ -98,7 +98,7 @@ async def get_metrics(
     response_model=List[MetricsTimeSeriesResponse],
     summary="Get metrics time series",
     description="Get time series of graph metrics",
-    dependencies=[Depends(has_permission(Permission.READ_METRICS))],
+    dependencies=[Depends(has_permission(Permission.READ_METRICS.value))],
 )
 async def get_metrics_time_series(
     request: MetricsRequest,
@@ -191,7 +191,7 @@ async def get_metrics_time_series(
     response_model=List[str],
     summary="Get available metrics",
     description="Get a list of available metrics",
-    dependencies=[Depends(has_permission(Permission.READ_METRICS))],
+    dependencies=[Depends(has_permission(Permission.READ_METRICS.value))],
 )
 async def get_available_metrics(
     api_key: ApiKey = Depends(get_api_key),
@@ -231,7 +231,7 @@ async def get_available_metrics(
     "/stream",
     summary="Stream metrics updates",
     description="Stream metrics updates in real-time",
-    dependencies=[Depends(has_permission(Permission.READ_METRICS))],
+    dependencies=[Depends(has_permission(Permission.READ_METRICS.value))],
 )
 async def stream_metrics(
     metrics: List[str] = Query(..., description="Metrics to stream"),
