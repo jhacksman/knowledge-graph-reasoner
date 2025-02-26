@@ -251,18 +251,18 @@ async def update_relationship(
         # 2. Create a new relationship with the updated values
         
         # Create a new relationship with updated values
-        from src.api.adapters import map_relationship_params
-        # Create a temporary relationship object with updated values
-        updated_relationship = {
-            "source_id": existing_relationship.source,
-            "target_id": existing_relationship.target,
-            "type": relationship.type or existing_relationship.type,
-            "weight": relationship.weight or existing_relationship.metadata.get("weight", 1.0),
-            "attributes": relationship.attributes or existing_relationship.metadata.get("attributes", {})
-        }
-        params = map_relationship_params(type('UpdatedRelationship', (), updated_relationship))
-        params["metadata"]["id"] = relationship_id  # Preserve the original ID
-        await graph_manager.add_relationship(**params)
+        # Instead of using the adapter function, create parameters directly
+        # This avoids the type error with map_relationship_params
+        await graph_manager.add_relationship(
+            source_id=existing_relationship.source,
+            target_id=existing_relationship.target,
+            relationship_type=relationship.type or existing_relationship.type,
+            metadata={
+                "weight": relationship.weight or existing_relationship.metadata.get("weight", 1.0),
+                "attributes": relationship.attributes or existing_relationship.metadata.get("attributes", {}),
+                "id": relationship_id  # Preserve the original ID
+            }
+        )
         
         # Get the updated relationship
         edges = await graph_manager.get_relationships()
