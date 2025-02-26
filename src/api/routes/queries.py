@@ -52,7 +52,7 @@ async def execute_query(query_id: str, query_text: str, max_results: int, includ
         
         # Initialize LLM with config
         from src.reasoning.llm import VeniceLLMConfig
-        config = VeniceLLMConfig(api_key="YOUR_API_KEY", model_name="deepseek-r1-671b")
+        config = VeniceLLMConfig(api_key="YOUR_API_KEY")
         llm = VeniceLLM(config=config)
         pipeline = ReasoningPipeline(llm=llm, graph=graph_manager)
         
@@ -83,7 +83,7 @@ async def execute_query(query_id: str, query_text: str, max_results: int, includ
 )
 async def list_queries(
     pagination: PaginationParams = Depends(),
-    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    status_filter: Optional[str] = None,
     api_key: ApiKey = Depends(get_api_key),
 ) -> QueryList:
     """Get a paginated list of queries."""
