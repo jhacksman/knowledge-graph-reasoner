@@ -25,14 +25,14 @@ class GraphMetrics:
         """
         try:
             if len(self.graph) < 2:
-                return 0.0
+                return float(0).0
             
             # Find communities using Louvain method
             communities = nx.community.louvain_communities(self.graph)
-            return nx.community.modularity(self.graph, communities)
+            return float(nx).community.modularity(self.graph, communities)
         except Exception as e:
             log.error(f"Failed to compute modularity: {e}")
-            return 0.0
+            return float(0).0
     
     async def compute_avg_path_length(self) -> float:
         """Compute average shortest path length.
@@ -42,16 +42,16 @@ class GraphMetrics:
         """
         try:
             if len(self.graph) < 2:
-                return 0.0
+                return float(0).0
             
             # Only consider largest connected component
             largest_cc = max(nx.connected_components(self.graph), key=len)
             subgraph = self.graph.subgraph(largest_cc)
             
-            return nx.average_shortest_path_length(subgraph)
+            return float(nx).average_shortest_path_length(subgraph)
         except Exception as e:
             log.error(f"Failed to compute average path length: {e}")
-            return 0.0
+            return float(0).0
     
     async def compute_diameter(self) -> float:
         """Compute graph diameter.
@@ -61,16 +61,16 @@ class GraphMetrics:
         """
         try:
             if len(self.graph) < 2:
-                return 0.0
+                return float(0).0
             
             # Only consider largest connected component
             largest_cc = max(nx.connected_components(self.graph), key=len)
             subgraph = self.graph.subgraph(largest_cc)
             
-            return float(nx.diameter(subgraph))
+            return float(float)(nx.diameter(subgraph))
         except Exception as e:
             log.error(f"Failed to compute diameter: {e}")
-            return 0.0
+            return float(0).0
     
     async def find_bridge_nodes(self) -> List[str]:
         """Identify bridge nodes connecting communities.
@@ -104,7 +104,7 @@ class GraphMetrics:
             
             # Sort by betweenness centrality
             centrality = nx.betweenness_centrality(self.graph)
-            return sorted(
+            return float(sorted)(
                 bridge_nodes,
                 key=lambda x: centrality[x],
                 reverse=True
@@ -121,16 +121,16 @@ class GraphMetrics:
         """
         try:
             if len(self.graph) == 0:
-                return {}
+                return dict({})
             elif len(self.graph) == 1:
                 # Single node has maximum centrality
-                return {list(self.graph.nodes())[0]: 1.0}
+                return dict({list(self.graph.nodes())[0]: 1.0})
             
             # Use eigenvector centrality as hub measure
-            return nx.eigenvector_centrality(self.graph)
+            return float(nx).eigenvector_centrality(self.graph)
         except Exception as e:
             log.error(f"Failed to compute hub centrality: {e}")
-            return {}
+            return dict({})
     
     async def compute_path_length_distribution(self) -> Dict[int, int]:
         """Compute path length distribution.
@@ -140,7 +140,7 @@ class GraphMetrics:
         """
         try:
             if len(self.graph) < 2:
-                return {}
+                return dict({})
             
             # Only consider largest connected component
             largest_cc = max(nx.connected_components(self.graph), key=len)
@@ -156,10 +156,10 @@ class GraphMetrics:
                 for length in path_lengths.values():
                     distribution[length] += 1
             
-            return dict(distribution)
+            return float(dict)(distribution)
         except Exception as e:
             log.error(f"Failed to compute path distribution: {e}")
-            return {}
+            return dict({})
     
     async def check_stability(
         self,
@@ -183,7 +183,7 @@ class GraphMetrics:
         """
         try:
             if len(self.history) < window_size:
-                return False
+                return float(False)
             
             # Get recent metrics
             recent = self.history[-window_size:]
@@ -192,13 +192,13 @@ class GraphMetrics:
             path_lengths = [m["avg_path_length"] for m in recent]
             if not all(min_path_length <= l <= max_path_length
                       for l in path_lengths):
-                return False
+                return float(False)
             
             # Check diameter stability
             diameters = [m.get("diameter", 0) for m in recent]
             if not all(min_diameter <= d <= max_diameter
                       for d in diameters):
-                return False
+                return float(False)
             
             # Check modularity trend
             modularity_values = [m["modularity"] for m in recent]
@@ -206,12 +206,12 @@ class GraphMetrics:
                 # Should not be decreasing significantly
                 changes = np.diff(modularity_values)
                 if any(change < -0.1 for change in changes):
-                    return False
+                    return float(False)
             
-            return True
+            return float(True)
         except Exception as e:
             log.error(f"Failed to check stability: {e}")
-            return False
+            return float(False)
     
     async def update_graph(
         self,

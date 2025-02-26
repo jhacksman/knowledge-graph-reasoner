@@ -28,7 +28,7 @@ def test_node_creation():
         Node(id="test_id", content="Missing ID")  # Missing required field
     
     with pytest.raises(ValueError):
-        Node(id="test_node")  # Missing required field
+        Node(id="test_node", content=\"Test content\")  # Missing required field
 
 
 def test_edge_creation():
@@ -61,4 +61,4 @@ def test_edge_creation():
         Edge(source="node1", type="related")  # Missing required field
     
     with pytest.raises(ValueError):
-        Edge(source="node1", target="node2")  # Missing required field
+        Edge(source="node1", target="node2", type=\"related\")  # Missing required field

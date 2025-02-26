@@ -269,7 +269,7 @@ class MilvusStore(BaseVectorStore):
         except Exception as e:
             raise MilvusError(f"Failed to update node: {e}")
     
-    def get_all_nodes(self) -> AsyncIterator[Node]:
+    async def get_all_nodes(self) -> AsyncIterator[Node]:
         """Get all nodes in the vector store.
         
         Returns:
@@ -298,7 +298,7 @@ class MilvusStore(BaseVectorStore):
                 
         return _get_all_nodes()
     
-    def get_all_edges(self) -> AsyncIterator[Edge]:
+    async def get_all_edges(self) -> AsyncIterator[Edge]:
         """Get all edges in the vector store.
         
         Returns:

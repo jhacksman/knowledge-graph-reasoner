@@ -53,6 +53,31 @@ class MockVectorStore(BaseVectorStore):
             yield edge
             await asyncio.sleep(0)  # Allow other coroutines to run
 
+    async def get_all_nodes(self) -> AsyncIterator[Node]:
+        """Get all nodes implementation for MockVectorStore."""
+        nodes = [
+            Node(id="test1", content="Test content 1"),
+            Node(id="test2", content="Test content 2")
+        ]
+        for node in nodes:
+            yield node
+            await asyncio.sleep(0)  # Allow other coroutines to run
+
+    async def get_all_edges(self) -> AsyncIterator[Edge]:
+        """Get all edges implementation for MockVectorStore."""
+        edges = [
+            Edge(source="test1", target="test2", type="related"),
+            Edge(source="test2", target="test3", type="similar")
+        ]
+        for edge in edges:
+            yield edge
+            await asyncio.sleep(0)  # Allow other coroutines to run
+
+    async def update_node(self, node: Node) -> None:
+        """Update node implementation for MockVectorStore."""
+        # This is a mock method, so no actual implementation needed
+        pass
+
 
 @pytest.fixture
 def mock_llm():
