@@ -30,7 +30,7 @@ router = APIRouter(
     response_model=SearchResponse,
     summary="Semantic search",
     description="Perform semantic search across concepts",
-    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS.value))],
 )
 async def search_concepts(
     request: SearchRequest,
@@ -87,7 +87,7 @@ async def search_concepts(
     response_model=SearchResponse,
     summary="Search by text",
     description="Search concepts by text",
-    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS.value))],
 )
 async def search_by_text(
     text: str = Path(..., description="Search text"),
@@ -147,7 +147,7 @@ async def search_by_text(
     response_model=SearchResponse,
     summary="Search by concept",
     description="Find concepts similar to a given concept",
-    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS.value))],
 )
 async def search_by_concept(
     concept_id: str = Path(..., description="Concept ID"),

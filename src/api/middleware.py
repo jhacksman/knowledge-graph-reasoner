@@ -158,6 +158,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             response.headers["X-RateLimit-Limit-Day"] = str(day_limit)
             
             return response
+            
+        except RateLimitExceeded as e:
+            # Return rate limit exceeded response
+            content = json.dumps({
+                "detail": str(e),
+                "error_code": "rate_limit_exceeded",
+                "retry_after": e.retry_after
+            })
+            
+            response = Response(
+                content=content,
+                status_code=429,
+                media_type="application/json"
+            )
+            
+            response.headers["Retry-After"] = str(e.retry_after)
+            response.headers["X-RateLimit-Limit-Minute"] = str(minute_limit)
+            response.headers["X-RateLimit-Limit-Day"] = str(day_limit)
+            
+            return response
     
     def _get_client_id(self, request: Request) -> str:
         """Get client ID from request."""
@@ -176,36 +196,53 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process the request."""
-        start_time = time.time()
+        # Skip rate limiting for certain paths
+        if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
+            return await call_next(request)
         
-        # Generate request ID
-        request_id = request.headers.get("X-Request-ID") or f"req_{int(start_time * 1000)}"
-        
-        # Add request ID to request state
-        request.state.request_id = request_id
-        
-        # Log request
-        logger.info(
-            f"Request started: method={request.method}, "
-            f"path={request.url.path}, request_id={request_id}"
-        )
+        # Get client ID from API key or IP address
+        client_id = self._get_client_id(request)
         
         try:
+            # Default limits
+            minute_limit = 60
+            day_limit = 10000
+            
+            # Check for custom limits in API key
+            api_key = request.headers.get("X-API-Key")
+            if api_key and hasattr(request.state, "api_key_data"):
+                minute_limit = request.state.api_key_data.rate_limit_per_minute
+                day_limit = request.state.api_key_data.rate_limit_per_day
+            
+            # Check rate limits
+            await self.rate_limiter.check_rate_limit(client_id, minute_limit, day_limit)
+            
             # Process the request
             response = await call_next(request)
             
-            # Calculate processing time
-            process_time = time.time() - start_time
+            # Add rate limit headers
+            response.headers["X-RateLimit-Limit-Minute"] = str(minute_limit)
+            response.headers["X-RateLimit-Limit-Day"] = str(day_limit)
             
-            # Log response
-            logger.info(
-                f"Request completed: method={request.method}, "
-                f"path={request.url.path}, status_code={response.status_code}, "
-                f"process_time={process_time:.3f}s, request_id={request_id}"
+            return response
+            
+        except RateLimitExceeded as e:
+            # Return rate limit exceeded response
+            content = json.dumps({
+                "detail": str(e),
+                "error_code": "rate_limit_exceeded",
+                "retry_after": e.retry_after
+            })
+            
+            response = Response(
+                content=content,
+                status_code=429,
+                media_type="application/json"
             )
             
-            # Add request ID to response headers
-            response.headers["X-Request-ID"] = request_id
+            response.headers["Retry-After"] = str(e.retry_after)
+            response.headers["X-RateLimit-Limit-Minute"] = str(minute_limit)
+            response.headers["X-RateLimit-Limit-Day"] = str(day_limit)
             
             return response
             

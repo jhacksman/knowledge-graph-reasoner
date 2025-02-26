@@ -140,7 +140,7 @@ async def run_expansion(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Start expansion",
     description="Start a knowledge graph expansion process",
-    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION))],
+    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION.value))],
 )
 async def start_expansion(
     config: ExpansionConfig,
@@ -210,7 +210,7 @@ async def start_expansion(
     response_model=List[ExpansionStatus],
     summary="List expansions",
     description="Get a list of all expansion processes",
-    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION))],
+    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION.value))],
 )
 async def list_expansions(
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -248,7 +248,7 @@ async def list_expansions(
     response_model=ExpansionStatus,
     summary="Get expansion",
     description="Get the status of an expansion process",
-    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION))],
+    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION.value))],
 )
 async def get_expansion(
     expansion_id: str = Path(..., description="Expansion ID"),
@@ -289,7 +289,7 @@ async def get_expansion(
     response_model=ExpansionStatus,
     summary="Pause expansion",
     description="Pause an ongoing expansion process",
-    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION))],
+    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION.value))],
 )
 async def pause_expansion(
     expansion_id: str = Path(..., description="Expansion ID"),
@@ -340,7 +340,7 @@ async def pause_expansion(
     response_model=ExpansionStatus,
     summary="Resume expansion",
     description="Resume a paused expansion process",
-    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION))],
+    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION.value))],
 )
 async def resume_expansion(
     background_tasks: BackgroundTasks,
@@ -401,7 +401,7 @@ async def resume_expansion(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete expansion",
     description="Delete an expansion process and its events",
-    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION))],
+    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION.value))],
 )
 async def delete_expansion(
     expansion_id: str = Path(..., description="Expansion ID"),
@@ -434,7 +434,7 @@ async def delete_expansion(
     response_model=List[ExpansionEvent],
     summary="Get expansion events",
     description="Get events for an expansion process",
-    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION))],
+    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION.value))],
 )
 async def get_expansion_events(
     expansion_id: str = Path(..., description="Expansion ID"),
@@ -471,7 +471,7 @@ async def get_expansion_events(
     "/{expansion_id}/stream",
     summary="Stream expansion events",
     description="Stream events for an expansion process in real-time",
-    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION))],
+    dependencies=[Depends(has_permission(Permission.MANAGE_EXPANSION.value))],
 )
 async def stream_expansion_events(
     expansion_id: str = Path(..., description="Expansion ID"),

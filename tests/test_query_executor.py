@@ -1,6 +1,7 @@
 """Tests for query execution pipeline."""
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+import asyncio
 import numpy as np
 from typing import List, Optional, AsyncIterator, Dict, Any
 
@@ -50,6 +51,7 @@ class MockVectorStore(BaseVectorStore):
         ]
         for edge in edges:
             yield edge
+            await asyncio.sleep(0)  # Allow other coroutines to run
 
 
 @pytest.fixture

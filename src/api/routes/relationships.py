@@ -28,7 +28,7 @@ router = APIRouter(
     response_model=RelationshipList,
     summary="List relationships",
     description="Get a paginated list of relationships with optional filtering",
-    dependencies=[Depends(has_permission(Permission.READ_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.READ_RELATIONSHIPS.value))],
 )
 async def list_relationships(
     pagination: PaginationParams = Depends(),
@@ -96,7 +96,7 @@ async def list_relationships(
     response_model=Relationship,
     summary="Get relationship",
     description="Get a relationship by ID",
-    dependencies=[Depends(has_permission(Permission.READ_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.READ_RELATIONSHIPS.value))],
 )
 async def get_relationship(
     relationship_id: str = Path(..., description="Relationship ID"),
@@ -132,7 +132,7 @@ async def get_relationship(
     status_code=status.HTTP_201_CREATED,
     summary="Create relationship",
     description="Create a new relationship",
-    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS.value))],
 )
 async def create_relationship(
     relationship: RelationshipCreate,
@@ -199,7 +199,7 @@ async def create_relationship(
     response_model=Relationship,
     summary="Update relationship",
     description="Update an existing relationship",
-    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS.value))],
 )
 async def update_relationship(
     relationship_id: str = Path(..., description="Relationship ID"),
@@ -274,7 +274,7 @@ async def update_relationship(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete relationship",
     description="Delete a relationship by ID",
-    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS.value))],
 )
 async def delete_relationship(
     relationship_id: str = Path(..., description="Relationship ID"),
@@ -314,7 +314,7 @@ async def delete_relationship(
     status_code=status.HTTP_201_CREATED,
     summary="Create multiple relationships",
     description="Create multiple relationships in a single request",
-    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS.value))],
 )
 async def create_relationships_batch(
     relationships: List[RelationshipCreate],

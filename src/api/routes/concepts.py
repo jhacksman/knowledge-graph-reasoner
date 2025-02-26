@@ -30,7 +30,7 @@ router = APIRouter(
     response_model=ConceptList,
     summary="List concepts",
     description="Get a paginated list of concepts with optional filtering",
-    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS.value))],
 )
 async def list_concepts(
     pagination: PaginationParams = Depends(),
@@ -101,7 +101,7 @@ async def list_concepts(
     response_model=Concept,
     summary="Get concept",
     description="Get a concept by ID",
-    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS.value))],
 )
 async def get_concept(
     concept_id: str = Path(..., description="Concept ID"),
@@ -145,7 +145,7 @@ async def get_concept(
     status_code=status.HTTP_201_CREATED,
     summary="Create concept",
     description="Create a new concept",
-    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS.value))],
 )
 async def create_concept(
     concept: ConceptCreate,
@@ -188,7 +188,7 @@ async def create_concept(
     response_model=Concept,
     summary="Update concept",
     description="Update an existing concept",
-    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS.value))],
 )
 async def update_concept(
     concept_id: str = Path(..., description="Concept ID"),
@@ -260,7 +260,7 @@ async def update_concept(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete concept",
     description="Delete a concept by ID",
-    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS.value))],
 )
 async def delete_concept(
     concept_id: str = Path(..., description="Concept ID"),
@@ -303,7 +303,7 @@ async def delete_concept(
     status_code=status.HTTP_201_CREATED,
     summary="Create multiple concepts",
     description="Create multiple concepts in a single request",
-    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS.value))],
 )
 async def create_concepts_batch(
     concepts: List[ConceptCreate],

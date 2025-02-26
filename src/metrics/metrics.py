@@ -11,9 +11,10 @@ log = logging.getLogger(__name__)
 class GraphMetrics:
     """Computes and tracks graph metrics."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics tracker."""
-        self.graph = nx.Graph()
+        self.graph: nx.Graph = nx.Graph()
+        self.history: List[Dict[str, Any]] = []
         self.history: List[Dict[str, Any]] = []
     
     async def compute_modularity(self) -> float:
