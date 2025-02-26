@@ -1,6 +1,6 @@
 """API routes for relationships."""
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body, status
 from src.api.models import (
     Relationship, RelationshipCreate, RelationshipUpdate, RelationshipList, 
     PaginationParams, FilterParams, ErrorResponse
@@ -39,23 +39,29 @@ async def list_relationships(
     """Get a paginated list of relationships with optional filtering."""
     try:
         # Get relationships from graph manager
+        # Use get_relationships method with appropriate filters
         relationships = await graph_manager.get_relationships(
             source_id=source_id,
             target_id=target_id,
-            type=type,
+            relationship_type=type,
             skip=(pagination.page - 1) * pagination.limit,
             limit=pagination.limit,
             sort_by=pagination.sort_by,
-            sort_order=pagination.sort_order,
+            sort_order=pagination.sort_order or "asc"
         )
         
         # Get total count
-        total = len(await graph_manager.get_all_edges(source_id=source_id, target_id=target_id, type=type))
+        # Use get_all_relationships with type filter only
+        all_relationships = await graph_manager.get_all_relationships(
+            type=type
+        )
+        total = len(all_relationships)
         # Calculate total pages
         pages = (total + pagination.limit - 1) // pagination.limit
         
+        from src.api.adapters import edges_to_relationships
         return RelationshipList(
-            items=relationships,
+            items=edges_to_relationships(relationships),
             total=total,
             page=pagination.page,
             limit=pagination.limit,
@@ -82,7 +88,7 @@ async def get_relationship(
     """Get a relationship by ID."""
     try:
         # Get relationship from graph manager
-        relationship = await graph_manager.get_edge(relationship_id)
+        relationship = await graph_manager.get_relationship(relationship_id)
         
         if not relationship:
             raise HTTPException(
@@ -90,7 +96,8 @@ async def get_relationship(
                 detail=f"Relationship with ID {relationship_id} not found",
             )
         
-        return relationship
+        from src.api.adapters import edge_to_relationship
+        return edge_to_relationship(relationship)
     except HTTPException:
         raise
     except Exception as e:
@@ -130,13 +137,33 @@ async def create_relationship(
             )
         
         # Create relationship in graph manager
-        new_relationship = await graph_manager.add_edge(
+        from src.api.adapters import relationship_to_edge, edge_to_relationship
+        
+        # Convert RelationshipCreate to Edge parameters
+        edge_data = relationship_to_edge(relationship)
+        
+        # Add edge to graph
+        edge_id = await graph_manager.add_relationship(
             source_id=relationship.source_id,
             target_id=relationship.target_id,
-            type=relationship.type,
-            weight=relationship.weight,
-            attributes=relationship.attributes,
+            edge_type=relationship.type,
+            metadata={"weight": relationship.weight, "attributes": relationship.attributes or {}}
         )
+        
+        # Get the created relationship
+        relationship = await graph_manager.get_relationships(
+            source_id=relationship.source_id,
+            target_id=relationship.target_id,
+            relationship_type=relationship.type
+        )
+        if not relationship:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create relationship",
+            )
+            
+        # Convert Edge to Relationship
+        new_relationship = edge_to_relationship(relationship[0])
         
         return new_relationship
     except HTTPException:
@@ -156,14 +183,14 @@ async def create_relationship(
 )
 async def update_relationship(
     relationship_id: str = Path(..., description="Relationship ID"),
-    relationship: RelationshipUpdate = None,
     graph_manager: GraphManager = Depends(),
     api_key: ApiKey = Depends(get_api_key),
+    relationship: RelationshipUpdate = Body(...),
 ) -> Relationship:
     """Update an existing relationship."""
     try:
         # Check if relationship exists
-        existing_relationship = await graph_manager.get_edge(relationship_id)
+        existing_relationship = await graph_manager.get_relationship(relationship_id)
         
         if not existing_relationship:
             raise HTTPException(
@@ -172,12 +199,39 @@ async def update_relationship(
             )
         
         # Update relationship in graph manager
-        updated_relationship = await graph_manager.update_edge(
-            relationship_id=relationship_id,
-            type=relationship.type,
-            weight=relationship.weight,
-            attributes=relationship.attributes,
+        from src.api.adapters import relationship_update_to_edge_update, edge_to_relationship
+        
+        # Parse edge ID to get components
+        parts = relationship_id.split("-", 2)
+        if len(parts) != 3:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid relationship ID format: {relationship_id}",
+            )
+            
+        source_id, target_id, old_edge_type = parts
+        
+        # Update edge in graph
+        await graph_manager.update_relationship(
+            edge_id=relationship_id,
+            edge_type=relationship.type,
+            metadata={"weight": relationship.weight, "attributes": relationship.attributes or {}}
         )
+        
+        # Get the updated relationship
+        updated_edge = await graph_manager.get_relationships(
+            source_id=source_id,
+            target_id=target_id,
+            relationship_type=relationship.type
+        )
+        if not updated_edge:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Relationship with ID {relationship_id} not found after update",
+            )
+            
+        # Convert Edge to Relationship
+        updated_relationship = edge_to_relationship(updated_edge[0])
         
         return updated_relationship
     except HTTPException:
@@ -203,7 +257,7 @@ async def delete_relationship(
     """Delete a relationship by ID."""
     try:
         # Check if relationship exists
-        existing_relationship = await graph_manager.get_edge(relationship_id)
+        existing_relationship = await graph_manager.get_relationship(relationship_id)
         
         if not existing_relationship:
             raise HTTPException(
@@ -212,7 +266,7 @@ async def delete_relationship(
             )
         
         # Delete relationship from graph manager
-        await graph_manager.delete_edge(relationship_id)
+        await graph_manager.delete_relationship(edge_id=relationship_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -255,13 +309,30 @@ async def create_relationships_batch(
                 )
             
             # Create relationship
-            new_relationship = await graph_manager.add_edge(
+            from src.api.adapters import edge_to_relationship
+            
+            # Add edge to graph
+            edge_id = await graph_manager.add_relationship(
                 source_id=relationship.source_id,
                 target_id=relationship.target_id,
-                type=relationship.type,
-                weight=relationship.weight,
-                attributes=relationship.attributes,
+                edge_type=relationship.type,
+                metadata={"weight": relationship.weight, "attributes": relationship.attributes or {}}
             )
+            
+            # Get the created relationship
+            created_relationship = await graph_manager.get_relationships(
+                source_id=relationship.source_id,
+                target_id=relationship.target_id,
+                relationship_type=relationship.type
+            )
+            if not created_relationship:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to create relationship between {relationship.source_id} and {relationship.target_id}",
+                )
+                
+            # Convert Edge to Relationship
+            new_relationship = edge_to_relationship(created_relationship[0])
             new_relationships.append(new_relationship)
         
         return new_relationships
