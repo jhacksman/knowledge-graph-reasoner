@@ -1,5 +1,5 @@
 """Middleware for the API."""
-from typing import Callable, Dict, List, Optional, Any
+from typing import Callable, Dict, List, Optional, Any, Union
 import time
 import asyncio
 from fastapi import FastAPI, Request, Response
@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 import json
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 # Setup logging
 logger = logging.getLogger(__name__)
