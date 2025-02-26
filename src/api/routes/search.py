@@ -7,7 +7,7 @@ from src.api.models import (
 )
 from src.api.auth import get_api_key, has_permission, Permission, ApiKey
 from src.graph.manager import GraphManager
-from src.reasoning.llm import VeniceLLM
+from src.reasoning.llm import VeniceLLM, VeniceLLMConfig
 import logging
 
 # Setup logging
@@ -40,24 +40,28 @@ async def search_concepts(
     """Perform semantic search across concepts."""
     try:
         # Initialize LLM for embedding
-        llm = VeniceLLM(config=VeniceLLMConfig()
+        llm = VeniceLLM(config=VeniceLLMConfig(api_key=""))  # Empty string for type checking, real key from env vars
         
         # Generate embedding for query
         query_embedding = await llm.embed_text(request.query)
         
         # Search for concepts by embedding
-        concepts = await # Placeholder for search functionality
-        # TODO: Implement search_concepts_by_embedding in GraphManager
-        results = [
+        similar_nodes = await graph_manager.get_similar_concepts(
             embedding=query_embedding,
-            limit=request.limit,
-            threshold=request.threshold,
-            domains=request.domains,
+            k=request.limit,
+            threshold=float(request.threshold) if request.threshold is not None else 0.7
         )
+        
+        # Convert nodes to concepts
+        from src.api.adapters import nodes_to_concepts
+        concepts = nodes_to_concepts(similar_nodes)
+        
+        # Create result tuples with similarity scores (using 1.0 as default since we don't have actual scores)
+        concept_results = [(concept, 1.0) for concept in concepts]
         
         # Create search results
         results = []
-        for concept, similarity in concepts:
+        for concept, similarity in concept_results:
             results.append(
                 SearchResult(
                     concept=concept,
@@ -96,24 +100,28 @@ async def search_by_text(
     """Search concepts by text."""
     try:
         # Initialize LLM for embedding
-        llm = VeniceLLM(config=VeniceLLMConfig()
+        llm = VeniceLLM(config=VeniceLLMConfig(api_key=""))  # Empty string for type checking, real key from env vars
         
         # Generate embedding for query
         query_embedding = await llm.embed_text(text)
         
         # Search for concepts by embedding
-        concepts = await # Placeholder for search functionality
-        # TODO: Implement search_concepts_by_embedding in GraphManager
-        results = [
+        similar_nodes = await graph_manager.get_similar_concepts(
             embedding=query_embedding,
-            limit=limit,
-            threshold=threshold,
-            domains=domains,
+            k=limit,
+            threshold=float(threshold) if threshold is not None else 0.7,
         )
+        
+        # Convert nodes to concepts
+        from src.api.adapters import nodes_to_concepts
+        concepts = nodes_to_concepts(similar_nodes)
+        
+        # Create result tuples with similarity scores (using 1.0 as default since we don't have actual scores)
+        concept_results = [(concept, 1.0) for concept in concepts]
         
         # Create search results
         results = []
-        for concept, similarity in concepts:
+        for concept, similarity in concept_results:
             results.append(
                 SearchResult(
                     concept=concept,
@@ -152,40 +160,49 @@ async def search_by_concept(
     """Find concepts similar to a given concept."""
     try:
         # Get concept
-        concept = await graph_manager.get_concept(concept_id)
+        node = await graph_manager.get_concept(concept_id)
         
-        if not concept:
+        if not node:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Concept with ID {concept_id} not found",
             )
         
-        # Get concept embedding
-        if not concept.embedding:
+        # Convert node to concept
+        from src.api.adapters import node_to_concept
+        concept = node_to_concept(node)
+        
+        # Get concept embedding from metadata
+        embedding = node.metadata.get("embedding")
+        if not embedding:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Concept with ID {concept_id} has no embedding",
             )
         
         # Search for concepts by embedding
-        concepts = await # Placeholder for search functionality
-        # TODO: Implement search_concepts_by_embedding in GraphManager
-        results = [
-            embedding=concept.embedding,
-            limit=limit + 1,  # Add 1 to account for the concept itself
-            threshold=threshold,
-            domains=domains,
+        similar_nodes = await graph_manager.get_similar_concepts(
+            embedding=embedding,
+            k=limit + 1,  # Add 1 to account for the concept itself
+            threshold=float(threshold) if threshold is not None else 0.7,
         )
         
+        # Convert nodes to concepts
+        from src.api.adapters import nodes_to_concepts
+        concepts = nodes_to_concepts(similar_nodes)
+        
+        # Create result tuples with similarity scores (using 1.0 as default since we don't have actual scores)
+        concept_results = [(concept, 1.0) for concept in concepts]
+        
         # Filter out the concept itself
-        concepts = [(c, s) for c, s in concepts if c.id != concept_id]
+        concept_results = [(c, s) for c, s in concept_results if c.id != concept_id]
         
         # Limit results
-        concepts = concepts[:limit]
+        concept_results = concept_results[:limit]
         
         # Create search results
         results = []
-        for concept, similarity in concepts:
+        for concept, similarity in concept_results:
             results.append(
                 SearchResult(
                     concept=concept,

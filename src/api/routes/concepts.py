@@ -1,6 +1,6 @@
 """API routes for concepts."""
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body, status
 from src.api.models import (
     Concept, ConceptCreate, ConceptUpdate, ConceptList, 
     PaginationParams, FilterParams, ErrorResponse
@@ -42,18 +42,21 @@ async def list_concepts(
     """Get a paginated list of concepts with optional filtering."""
     try:
         # Get concepts from graph manager
-        concepts = await graph_manager.get_all_nodes(
+        nodes = await graph_manager.get_all_concepts(
             domain=domain,
             name_contains=name_contains,
             skip=(pagination.page - 1) * pagination.limit,
             limit=pagination.limit,
             sort_by=pagination.sort_by,
-            sort_order=pagination.sort_order,
+            sort_order=pagination.sort_order or "asc",
         )
         
         # Get total count
-        total = len(await graph_manager.get_all_nodes(domain=domain, name_contains=name_contains))
-        )
+        total = len(await graph_manager.get_all_concepts(domain=domain, name_contains=name_contains))
+        
+        # Convert nodes to concepts
+        from src.api.adapters import nodes_to_concepts
+        concepts = nodes_to_concepts(nodes)
         
         # Calculate total pages
         pages = (total + pagination.limit - 1) // pagination.limit
@@ -89,16 +92,20 @@ async def get_concept(
     """Get a concept by ID."""
     try:
         # Get concept from graph manager
-        concept = await graph_manager.get_concept(concept_id)
+        node = await graph_manager.get_concept(concept_id)
         
-        if not concept:
+        if not node:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Concept with ID {concept_id} not found",
             )
         
+        # Convert node to concept
+        from src.api.adapters import node_to_concept
+        concept = node_to_concept(node)
+        
         # Remove embedding if not requested
-        if not include_embedding and hasattr(concept, "embedding"):
+        if not include_embedding:
             concept.embedding = None
         
         return concept
@@ -127,15 +134,27 @@ async def create_concept(
 ) -> Concept:
     """Create a new concept."""
     try:
+        # Convert ConceptCreate to Node parameters
+        from src.api.adapters import concept_to_node, node_to_concept
+        node_params = concept_to_node(concept)
+        
         # Create concept in graph manager
-        new_concept = await graph_manager.add_node(
-            name=concept.name,
-            description=concept.description,
-            domain=concept.domain,
-            attributes=concept.attributes,
+        node_id = await graph_manager.add_concept(
+            content=node_params["content"],
+            embedding=node_params["embedding"],
+            metadata=node_params["metadata"]
         )
         
-        return new_concept
+        # Get the created concept
+        node = await graph_manager.get_concept(node_id)
+        
+        # Convert Node to Concept
+        if node is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Concept not found",
+            )
+        return node_to_concept(node)
     except Exception as e:
         logger.exception(f"Error creating concept: {e}")
         raise HTTPException(
@@ -153,9 +172,9 @@ async def create_concept(
 )
 async def update_concept(
     concept_id: str = Path(..., description="Concept ID"),
-    concept: ConceptUpdate = None,
     graph_manager: GraphManager = Depends(),
     api_key: ApiKey = Depends(get_api_key),
+    concept: ConceptUpdate = Body(...),
 ) -> Concept:
     """Update an existing concept."""
     try:
@@ -168,16 +187,28 @@ async def update_concept(
                 detail=f"Concept with ID {concept_id} not found",
             )
         
+        # Convert ConceptUpdate to Node update parameters
+        from src.api.adapters import concept_update_to_node_update, node_to_concept
+        node_update = concept_update_to_node_update(concept, concept_id)
+        
         # Update concept in graph manager
-        updated_concept = await graph_manager.update_node(
+        await graph_manager.update_concept(
             concept_id=concept_id,
-            name=concept.name,
-            description=concept.description,
-            domain=concept.domain,
-            attributes=concept.attributes,
+            content=node_update.get("content"),
+            embedding=node_update.get("embedding"),
+            metadata=node_update.get("metadata", {})
         )
         
-        return updated_concept
+        # Get the updated concept
+        node = await graph_manager.get_concept(concept_id)
+        
+        # Convert Node to Concept
+        if node is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Concept not found",
+            )
+        return node_to_concept(node)
     except HTTPException:
         raise
     except Exception as e:
@@ -212,7 +243,7 @@ async def delete_concept(
             )
         
         # Delete concept from graph manager
-        await graph_manager.delete_node(concept_id)
+        await graph_manager.delete_concept(concept_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -241,13 +272,25 @@ async def create_concepts_batch(
         # Create concepts in graph manager
         new_concepts = []
         for concept in concepts:
-            new_concept = await graph_manager.add_node(
-                name=concept.name,
-                description=concept.description,
-                domain=concept.domain,
-                attributes=concept.attributes,
+            # Convert ConceptCreate to Node parameters
+            from src.api.adapters import concept_to_node, node_to_concept
+            node_params = concept_to_node(concept)
+            
+            # Create concept in graph manager
+            node_id = await graph_manager.add_concept(
+                content=node_params["content"],
+                embedding=node_params["embedding"],
+                metadata=node_params["metadata"]
             )
-            new_concepts.append(new_concept)
+            
+            # Get the created concept
+            node = await graph_manager.get_concept(node_id)
+            
+            # Convert Node to Concept
+            if node is None:
+                # Skip concepts that couldn't be retrieved
+                continue
+            new_concepts.append(node_to_concept(node))
         
         return new_concepts
     except Exception as e:
