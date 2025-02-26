@@ -1,5 +1,5 @@
 """Middleware for the API."""
-from typing import Callable, Dict, List, Optional, Any, Union
+from typing import Callable, Dict, List, Optional, Any, Union, cast
 import time
 import asyncio
 from fastapi import FastAPI, Request, Response
@@ -109,9 +109,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.rate_limiter = RateLimiter()
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Process the request with rate limiting."""
         # Set request ID
-        request.state.request.state.request_id = str(uuid.uuid4())
-        """Process the request."""
+        request.state.request_id = str(uuid.uuid4())
+        
         # Skip rate limiting for certain paths
         if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
             return await call_next(request)
@@ -137,26 +138,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             
             # Add rate limit headers
-            response.headers["X-RateLimit-Limit-Minute"] = str(minute_limit)
-            response.headers["X-RateLimit-Limit-Day"] = str(day_limit)
-            
-            return response
-            
-        except RateLimitExceeded as e:
-            # Return rate limit exceeded response
-            content = json.dumps({
-                "detail": str(e),
-                "error_code": "rate_limit_exceeded",
-                "retry_after": e.retry_after
-            })
-            
-            response = Response(
-                content=content,
-                status_code=429,
-                media_type="application/json"
-            )
-            
-            response.headers["Retry-After"] = str(e.retry_after)
             response.headers["X-RateLimit-Limit-Minute"] = str(minute_limit)
             response.headers["X-RateLimit-Limit-Day"] = str(day_limit)
             
@@ -197,68 +178,56 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for logging requests."""
     
+    def __init__(self, app: ASGIApp):
+        """Initialize the middleware."""
+        super().__init__(app)
+        self.rate_limiter = RateLimiter()
+    
+    def _get_client_id(self, request: Request) -> str:
+        """Get client ID from request."""
+        # Try to get from API key
+        api_key = request.headers.get("X-API-Key")
+        if api_key and hasattr(request.state, "api_key_data"):
+            return request.state.api_key_data.client_id
+        
+        # Fall back to IP address
+        client_host = request.client.host if request.client else "unknown"
+        return f"ip:{client_host}"
+    
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Process the request with logging."""
         # Set request ID
-        request.state.request.state.request_id = str(uuid.uuid4())
-        """Process the request."""
-        # Skip rate limiting for certain paths
-        if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
-            return await call_next(request)
+        request.state.request_id = str(uuid.uuid4())
         
-        # Get client ID from API key or IP address
-        client_id = self._get_client_id(request)
+        # Log request
+        start_time = time.time()
+        logger.info(f"Request: {request.method} {request.url.path} - {request.state.request_id}")
         
+        # Process request and handle exceptions
         try:
-            # Default limits
-            minute_limit = 60
-            day_limit = 10000
-            
-            # Check for custom limits in API key
-            api_key = request.headers.get("X-API-Key")
-            if api_key and hasattr(request.state, "api_key_data"):
-                minute_limit = request.state.api_key_data.rate_limit_per_minute
-                day_limit = request.state.api_key_data.rate_limit_per_day
-            
-            # Check rate limits
-            await self.rate_limiter.check_rate_limit(client_id, minute_limit, day_limit)
-            
-            # Process the request
             response = await call_next(request)
             
-            # Add rate limit headers
-            response.headers["X-RateLimit-Limit-Minute"] = str(minute_limit)
-            response.headers["X-RateLimit-Limit-Day"] = str(day_limit)
-            
-            return response
-            
-        except RateLimitExceeded as e:
-            # Return rate limit exceeded response
-            content = json.dumps({
-                "detail": str(e),
-                "error_code": "rate_limit_exceeded",
-                "retry_after": e.retry_after
-            })
-            
-            response = Response(
-                content=content,
-                status_code=429,
-                media_type="application/json"
+            # Log response
+            duration = time.time() - start_time
+            logger.info(
+                f"Response: {request.method} {request.url.path} - "
+                f"status={response.status_code} - "
+                f"duration={duration:.3f}s - "
+                f"{request.state.request_id}"
             )
             
-            response.headers["Retry-After"] = str(e.retry_after)
-            response.headers["X-RateLimit-Limit-Minute"] = str(minute_limit)
-            response.headers["X-RateLimit-Limit-Day"] = str(day_limit)
-            
             return response
-            
         except Exception as e:
             # Log exception
+            duration = time.time() - start_time
             logger.exception(
-                f"Request failed: method={request.method}, "
-                f"path={request.url.path}, error={str(e)}, request.state.request_id={request.state.request_id}"
+                f"Error: {request.method} {request.url.path} - "
+                f"error={str(e)} - "
+                f"duration={duration:.3f}s - "
+                f"{request.state.request_id}"
             )
             
-            # Re-raise the exception
+            # Re-raise to let higher-level exception handlers deal with it
             raise
 
 
