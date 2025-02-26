@@ -159,7 +159,20 @@ async def create_relationship(
         # Create relationship in graph manager
         from src.api.adapters import map_relationship_params
         params = map_relationship_params(relationship)
-        await graph_manager.add_relationship(**params)
+        source_id = params.get("source_id")
+        target_id = params.get("target_id")
+        relationship_type = params.get("relationship_type")
+        
+        # Check for None values to satisfy type checker
+        if source_id is None or target_id is None or relationship_type is None:
+            raise HTTPException(status_code=400, detail="source_id, target_id, and relationship_type are required")
+        
+        await graph_manager.add_relationship(
+            source_id,
+            target_id,
+            relationship_type,
+            params.get("metadata", {})
+        )
         
         # Since add_relationship doesn't return the relationship, we need to retrieve it
         relationships = await graph_manager.get_relationships(
@@ -226,11 +239,19 @@ async def update_relationship(
         # Create a new relationship with updated values
         # Instead of using the adapter function, create parameters directly
         # This avoids the type error with map_relationship_params
+        source_id = existing_relationship.source
+        target_id = existing_relationship.target
+        relationship_type = relationship.type or existing_relationship.type
+        
+        # Check for None values to satisfy type checker
+        if source_id is None or target_id is None or relationship_type is None:
+            raise HTTPException(status_code=400, detail="source_id, target_id, and relationship_type are required")
+        
         await graph_manager.add_relationship(
-            source_id=existing_relationship.source,
-            target_id=existing_relationship.target,
-            relationship_type=relationship.type or existing_relationship.type,
-            metadata={
+            source_id,
+            target_id,
+            relationship_type,
+            {
                 "weight": relationship.weight or existing_relationship.metadata.get("weight", 1.0),
                 "attributes": relationship.attributes or existing_relationship.metadata.get("attributes", {}),
                 "id": relationship_id  # Preserve the original ID
@@ -344,7 +365,20 @@ async def create_relationships_batch(
             # Create relationship
             from src.api.adapters import map_relationship_params
             params = map_relationship_params(relationship)
-            await graph_manager.add_relationship(**params)
+            source_id = params.get("source_id")
+            target_id = params.get("target_id")
+            relationship_type = params.get("relationship_type")
+            
+            # Check for None values to satisfy type checker
+            if source_id is None or target_id is None or relationship_type is None:
+                raise HTTPException(status_code=400, detail="source_id, target_id, and relationship_type are required")
+            
+            await graph_manager.add_relationship(
+                source_id,
+                target_id,
+                relationship_type,
+                params.get("metadata", {})
+            )
             
             # Since add_relationship doesn't return the relationship, we need to retrieve it
             edges = await graph_manager.get_relationships(
