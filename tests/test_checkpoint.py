@@ -487,7 +487,7 @@ class TestReasoningPipelineCheckpointing:
                 assert resume_from_checkpoint == checkpoint_path
                 
                 # Mock that we're listing checkpoints to get the iteration
-                checkpoints = await (pipeline.checkpoint_manager and (pipeline.checkpoint_manager and pipeline.((checkpoint_manager is not None) and checkpoint_manager.list_checkpoints())))
+                checkpoints = await (pipeline.checkpoint_manager and pipeline.checkpoint_manager.list_checkpoints())
                 for checkpoint in checkpoints:
                     if str(checkpoint["path"]) == str(resume_from_checkpoint):
                         # Check that we're starting from iteration 6 (5+1)
