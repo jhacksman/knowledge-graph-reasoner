@@ -23,12 +23,30 @@ def node_to_concept(node: Node) -> Concept:
     if node.metadata and "embedding" in node.metadata:
         embedding = node.metadata["embedding"]
     
+    # Extract concept attributes from node content and metadata
+    # Map node.content to concept.name as the primary identifier
+    name = node.content
+    
+    # Extract description and domain from metadata if available
+    description = node.metadata.get("description") if node.metadata else None
+    domain = node.metadata.get("domain") if node.metadata else None
+    
+    # Extract other attributes from metadata
+    attributes = {
+        k: v for k, v in (node.metadata or {}).items() 
+        if k not in ["embedding", "description", "domain"]
+    }
+    
     # Create concept from node
     return Concept(
         id=node.id,
-        content=node.content,
+        name=name,
+        description=description,
+        domain=domain,
+        attributes=attributes,
         embedding=embedding,
-        metadata={k: v for k, v in (node.metadata or {}).items() if k != "embedding"}
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
     )
 
 
@@ -53,13 +71,26 @@ def concept_to_node(concept: ConceptCreate) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Parameters for creating a Node
     """
-    # Prepare metadata
-    metadata = concept.metadata or {}
+    # Map concept fields to node parameters
+    # Use name as the primary content
+    content = concept.name
+    
+    # Prepare metadata including description and domain
+    metadata = {}
+    
+    if concept.description:
+        metadata["description"] = concept.description
+    
+    if concept.domain:
+        metadata["domain"] = concept.domain
+    
+    # Include any additional attributes
+    if concept.attributes:
+        metadata.update(concept.attributes)
     
     # Return node parameters
     return {
-        "content": concept.content,
-        "embedding": concept.embedding,
+        "content": content,
         "metadata": metadata
     }
 
@@ -77,14 +108,29 @@ def concept_update_to_node_update(concept: ConceptUpdate, concept_id: str) -> Di
     # Prepare update parameters
     update = {}
     
-    if concept.content is not None:
-        update["content"] = concept.content
+    if concept.name is not None:
+        update["content"] = concept.name
     
-    if concept.embedding is not None:
-        update["embedding"] = concept.embedding
+    # Update metadata if any of the metadata-related fields are provided
+    metadata_updated = False
+    metadata_dict = {}
     
-    if concept.metadata is not None:
-        update["metadata"] = concept.metadata
+    if concept.description is not None:
+        metadata_dict["description"] = concept.description
+        metadata_updated = True
+    
+    if concept.domain is not None:
+        metadata_dict["domain"] = concept.domain
+        metadata_updated = True
+    
+    if concept.attributes is not None:
+        # Cast attributes to Dict[str, Any] to satisfy mypy
+        attr_dict: Dict[str, Any] = concept.attributes
+        metadata_dict.update(attr_dict)
+        metadata_updated = True
+    
+    if metadata_updated:
+        update["metadata"] = metadata_dict
     
     return update
 

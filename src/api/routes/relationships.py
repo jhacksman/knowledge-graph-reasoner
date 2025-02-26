@@ -245,10 +245,10 @@ async def update_relationship(
         if updated_edge:
             # Convert Edge to Relationship
             from src.api.adapters import edge_to_relationship
-            relationship = edge_to_relationship(updated_edge)
+            updated_relationship = edge_to_relationship(updated_edge)
             # Ensure we use the original relationship ID
-            relationship.id = relationship_id
-            return relationship
+            updated_relationship.id = relationship_id
+            return updated_relationship
         
         # If no relationship was found, return a default one
         return Relationship(
