@@ -83,7 +83,7 @@ async def execute_query(query_id: str, query_text: str, max_results: int, includ
 )
 async def list_queries(
     pagination: PaginationParams = Depends(),
-    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    status_filter: Optional[str] = None,
     api_key: ApiKey = Depends(get_api_key),
 ) -> QueryList:
     """Get a paginated list of queries."""

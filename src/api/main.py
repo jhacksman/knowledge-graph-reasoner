@@ -115,7 +115,8 @@ async def add_graph_manager(request: Request, call_next):
 # Dependency to get GraphManager from request state
 async def get_graph_manager(request: Request) -> GraphManager:
     """Get GraphManager from request state."""
-    return request.state.graph_manager
+    graph_manager: GraphManager = request.state.graph_manager
+    return graph_manager
 
 
 # Add routes
