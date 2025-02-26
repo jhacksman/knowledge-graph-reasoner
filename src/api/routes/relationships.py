@@ -1,6 +1,7 @@
 """API routes for relationships."""
 from typing import List, Optional, Dict, Any
 import uuid
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body, status
 from src.api.models import (
     Relationship, RelationshipCreate, RelationshipUpdate, RelationshipList, 
@@ -67,8 +68,23 @@ async def list_relationships(
         # Calculate total pages
         pages = (total + pagination.limit - 1) // pagination.limit
         
+        # Convert Edge objects to Relationship objects
+        relationship_items = []
+        for edge in relationships:
+            # Create a Relationship from each Edge
+            relationship_items.append(Relationship(
+                id=getattr(edge, "id", str(uuid.uuid4())),
+                source_id=edge.source,
+                target_id=edge.target,
+                type=edge.type,
+                weight=edge.metadata.get("weight", 1.0),
+                attributes=edge.metadata.get("attributes", {}),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            ))
+        
         return RelationshipList(
-            items=relationships,
+            items=relationship_items,
             total=total,
             page=pagination.page,
             limit=pagination.limit,
@@ -95,16 +111,26 @@ async def get_relationship(
     """Get a relationship by ID."""
     try:
         # Get relationship from graph manager by filtering
-        relationships = await graph_manager.get_relationships()
-        relationship = next((r for r in relationships if r.id == relationship_id), None)
+        edges = await graph_manager.get_relationships()
+        edge = next((r for r in edges if getattr(r, "id", None) == relationship_id), None)
         
-        if not relationship:
+        if not edge:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Relationship with ID {relationship_id} not found",
             )
         
-        return relationship
+        # Convert Edge to Relationship
+        return Relationship(
+            id=getattr(edge, "id", relationship_id),
+            source_id=edge.source,
+            target_id=edge.target,
+            type=edge.type,
+            weight=edge.metadata.get("weight", 1.0),
+            attributes=edge.metadata.get("attributes", {}),
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -164,15 +190,16 @@ async def create_relationship(
         
         # Convert Edge to Relationship if needed
         if new_relationship:
-            # In a real implementation, we would convert Edge to Relationship
-            # For now, we'll assume Edge can be used as Relationship
+            # Convert Edge to Relationship
             return Relationship(
-                id=new_relationship.id,
+                id=getattr(new_relationship, "id", str(uuid.uuid4())),
                 source_id=relationship.source_id,
                 target_id=relationship.target_id,
                 type=relationship.type,
                 weight=relationship.weight or 1.0,
-                attributes=relationship.attributes or {}
+                attributes=relationship.attributes or {},
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             )
         
         # If no relationship was found, return a default one
@@ -182,7 +209,9 @@ async def create_relationship(
             target_id=relationship.target_id,
             type=relationship.type,
             weight=relationship.weight or 1.0,
-            attributes=relationship.attributes or {}
+            attributes=relationship.attributes or {},
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
     except HTTPException:
         raise
@@ -208,8 +237,8 @@ async def update_relationship(
     """Update an existing relationship."""
     try:
         # Check if relationship exists
-        relationships = await graph_manager.get_relationships()
-        existing_relationship = next((r for r in relationships if r.id == relationship_id), None)
+        edges = await graph_manager.get_relationships()
+        existing_relationship = next((r for r in edges if getattr(r, "id", None) == relationship_id), None)
         
         if not existing_relationship:
             raise HTTPException(
@@ -227,21 +256,29 @@ async def update_relationship(
             target_id=existing_relationship.target,
             relationship_type=relationship.type or existing_relationship.type,
             metadata={
-                "weight": relationship.weight or existing_relationship.weight,
-                "attributes": relationship.attributes or existing_relationship.attributes,
+                "weight": relationship.weight or existing_relationship.metadata.get("weight", 1.0),
+                "attributes": relationship.attributes or existing_relationship.metadata.get("attributes", {}),
                 "id": relationship_id  # Preserve the original ID
             }
         )
         
         # Get the updated relationship
-        relationships = await graph_manager.get_relationships()
-        updated_relationship = next((r for r in relationships if r.id == relationship_id), None)
+        edges = await graph_manager.get_relationships()
+        updated_edge = next((r for r in edges if getattr(r, "id", None) == relationship_id), None)
         
         # Convert Edge to Relationship if needed
-        if updated_relationship:
-            # In a real implementation, we would convert Edge to Relationship
-            # For now, we'll assume Edge can be used as Relationship
-            return updated_relationship
+        if updated_edge:
+            # Convert Edge to Relationship
+            return Relationship(
+                id=relationship_id,
+                source_id=updated_edge.source,
+                target_id=updated_edge.target,
+                type=updated_edge.type,
+                weight=updated_edge.metadata.get("weight", 1.0),
+                attributes=updated_edge.metadata.get("attributes", {}),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
         
         # If no relationship was found, return a default one
         return Relationship(
@@ -249,8 +286,10 @@ async def update_relationship(
             source_id=existing_relationship.source,
             target_id=existing_relationship.target,
             type=relationship.type or existing_relationship.type,
-            weight=relationship.weight or existing_relationship.weight or 1.0,
-            attributes=relationship.attributes or existing_relationship.attributes or {}
+            weight=relationship.weight or existing_relationship.metadata.get("weight", 1.0),
+            attributes=relationship.attributes or existing_relationship.metadata.get("attributes", {}),
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
     except HTTPException:
         raise
@@ -275,8 +314,8 @@ async def delete_relationship(
     """Delete a relationship by ID."""
     try:
         # Check if relationship exists
-        relationships = await graph_manager.get_relationships()
-        existing_relationship = next((r for r in relationships if r.id == relationship_id), None)
+        edges = await graph_manager.get_relationships()
+        existing_relationship = next((r for r in edges if getattr(r, "id", None) == relationship_id), None)
         
         if not existing_relationship:
             raise HTTPException(
@@ -352,12 +391,14 @@ async def create_relationships_batch(
             # Create a Relationship object from the Edge
             if edges:
                 new_relationship = Relationship(
-                    id=edges[-1].id,
+                    id=getattr(edges[-1], "id", str(uuid.uuid4())),
                     source_id=relationship.source_id,
                     target_id=relationship.target_id,
                     type=relationship.type,
                     weight=relationship.weight or 1.0,
-                    attributes=relationship.attributes or {}
+                    attributes=relationship.attributes or {},
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
                 )
             else:
                 new_relationship = None

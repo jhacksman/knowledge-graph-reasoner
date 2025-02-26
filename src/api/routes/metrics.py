@@ -65,7 +65,7 @@ async def get_metrics(
         
         # GraphMetrics.update_graph is not async, so no await needed
         # GraphMetrics.update_graph doesn't return a value and is not a coroutine
-        # No need to await or assign
+        # Call the methods directly without await or assignment
         metrics_tracker.update_graph(nodes, edge_dicts)
         graph_metrics_tracker.update_graph(nodes, edge_dicts)
         
@@ -261,7 +261,7 @@ async def stream_metrics(
                 
                 # Update graph data - GraphMetrics.update_graph is not async
                 # GraphMetrics.update_graph doesn't return a value and is not a coroutine
-                # No need to await or assign
+                # Call the methods directly without await or assignment
                 metrics_tracker.update_graph(nodes, edge_dicts)
                 graph_metrics_tracker.update_graph(nodes, edge_dicts)
                 
