@@ -23,6 +23,7 @@ from src.api.routes import (
 )
 from src.graph.manager import GraphManager
 from src.api.models import ErrorResponse
+from src.vector_store.milvus_store import MilvusStore
 
 # Setup logging
 logging.basicConfig(
@@ -91,7 +92,7 @@ async def custom_swagger_ui_html():
 async def add_graph_manager(request: Request, call_next):
     """Add GraphManager to request state."""
     # Initialize GraphManager
-    graph_manager = GraphManager(vector_store=None)
+    graph_manager = GraphManager(vector_store=MilvusStore())
     
     # Add to request state
     request.state.graph_manager = graph_manager

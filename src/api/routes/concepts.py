@@ -17,7 +17,7 @@ from src.api.models import (
 )
 from src.api.auth import get_api_key, has_permission, Permission, ApiKey
 from src.graph.manager import GraphManager
-from src.vector_store.milvus_store import MilvusVectorStore
+from src.vector_store.milvus_store import MilvusStore
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -48,10 +48,10 @@ async def list_concepts(
     """Get a paginated list of concepts."""
     try:
         # Get graph manager from request state
-        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        graph_manager = GraphManager(vector_store=MilvusStore())
         
         # Get concepts with pagination
-        concepts = await graph_manager.get_concepts(
+        concepts = await graph_manager.get_concept(
             domain=domain,
             name_contains=name_contains,
             skip=pagination.offset,
@@ -61,7 +61,7 @@ async def list_concepts(
         )
         
         # Get total count
-        total = len(await graph_manager.get_concepts(domain=domain, name_contains=name_contains))
+        total = len(await graph_manager.get_concept(domain=domain, name_contains=name_contains))
         
         # Calculate total pages
         pages = (total + pagination.limit - 1) // pagination.limit
@@ -94,7 +94,7 @@ async def get_concept(
     """Get a concept by ID."""
     try:
         # Get graph manager from request state
-        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        graph_manager = GraphManager(vector_store=MilvusStore())
         
         # Get concept
         concept = await graph_manager.get_concept(concept_id)
@@ -131,7 +131,7 @@ async def create_concept(
     """Create a new concept."""
     try:
         # Get graph manager from request state
-        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        graph_manager = GraphManager(vector_store=MilvusStore())
         
         # Create concept
         concept_id = str(uuid.uuid4())
@@ -159,7 +159,7 @@ async def create_concept(
     summary="Update concept",
     description="Update an existing concept",
 )
-async def update_concept(
+async def update_node(
     concept_id: str,
     concept: ConceptUpdate,
     api_key: ApiKey = Depends(get_api_key),
@@ -168,7 +168,7 @@ async def update_concept(
     """Update an existing concept."""
     try:
         # Get graph manager from request state
-        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        graph_manager = GraphManager(vector_store=MilvusStore())
         
         # Check if concept exists
         existing_concept = await graph_manager.get_concept(concept_id)
@@ -180,7 +180,7 @@ async def update_concept(
             )
         
         # Update concept
-        updated_concept = await graph_manager.update_concept(
+        updated_concept = await graph_manager.update_node(
             id=concept_id,
             name=concept.name,
             description=concept.description,
@@ -206,7 +206,7 @@ async def update_concept(
     summary="Delete concept",
     description="Delete a concept by ID",
 )
-async def delete_concept(
+async def remove_node(
     concept_id: str,
     api_key: ApiKey = Depends(get_api_key),
     _: None = Depends(has_permission(Permission.WRITE_PERMISSION)),
@@ -214,7 +214,7 @@ async def delete_concept(
     """Delete a concept by ID."""
     try:
         # Get graph manager from request state
-        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        graph_manager = GraphManager(vector_store=MilvusStore())
         
         # Check if concept exists
         existing_concept = await graph_manager.get_concept(concept_id)
@@ -226,7 +226,7 @@ async def delete_concept(
             )
         
         # Delete concept
-        await graph_manager.delete_concept(concept_id)
+        await graph_manager.remove_node(concept_id)
         
         return None
     except HTTPException:
@@ -254,7 +254,7 @@ async def create_concepts_batch(
     """Create multiple concepts in a single request."""
     try:
         # Get graph manager from request state
-        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        graph_manager = GraphManager(vector_store=MilvusStore())
         
         # Create concepts
         created_concepts = []

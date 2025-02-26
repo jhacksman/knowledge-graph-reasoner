@@ -60,7 +60,7 @@ async def execute_query(query_id: str, query_text: str, max_results: int, includ
     response_model=QueryList,
     summary="List queries",
     description="Get a paginated list of queries",
-    dependencies=[Depends(has_permission(Permission.READ_QUERIES))],
+    dependencies=[Depends(has_permission(Permission.READ_PERMISSION_QUERIES))],
 )
 async def list_queries(
     pagination: PaginationParams = Depends(),
@@ -119,7 +119,7 @@ async def list_queries(
     response_model=Query,
     summary="Get query",
     description="Get a query by ID",
-    dependencies=[Depends(has_permission(Permission.READ_QUERIES))],
+    dependencies=[Depends(has_permission(Permission.READ_PERMISSION_QUERIES))],
 )
 async def get_query(
     query_id: str = Path(..., description="Query ID"),
@@ -161,7 +161,7 @@ async def get_query(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Create query",
     description="Create and execute a new query",
-    dependencies=[Depends(has_permission(Permission.WRITE_QUERIES))],
+    dependencies=[Depends(has_permission(Permission.WRITE_PERMISSION_QUERIES))],
 )
 async def create_query(
     query: QueryCreate,
@@ -212,7 +212,7 @@ async def create_query(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete query",
     description="Delete a query by ID",
-    dependencies=[Depends(has_permission(Permission.WRITE_QUERIES))],
+    dependencies=[Depends(has_permission(Permission.WRITE_PERMISSION_QUERIES))],
 )
 async def delete_query(
     query_id: str = Path(..., description="Query ID"),

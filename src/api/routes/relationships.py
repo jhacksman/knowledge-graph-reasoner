@@ -26,7 +26,7 @@ router = APIRouter(
     response_model=RelationshipList,
     summary="List relationships",
     description="Get a paginated list of relationships with optional filtering",
-    dependencies=[Depends(has_permission(Permission.READ_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.READ_PERMISSION_RELATIONSHIPS))],
 )
 async def list_relationships(
     pagination: PaginationParams = Depends(),
@@ -50,7 +50,7 @@ async def list_relationships(
         )
         
         # Get total count
-        total = len(await graph_manager.get_all_edges(source_id=source_id, target_id=target_id, type=type))
+        total = len(await graph_manager.get_relationships(source_id=source_id, target_id=target_id, type=type))
         # Calculate total pages
         pages = (total + pagination.limit - 1) // pagination.limit
         
@@ -72,9 +72,9 @@ async def list_relationships(
     response_model=Relationship,
     summary="Get relationship",
     description="Get a relationship by ID",
-    dependencies=[Depends(has_permission(Permission.READ_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.READ_PERMISSION_RELATIONSHIPS))],
 )
-async def get_relationship(
+async def get_edge(
     relationship_id: str = Path(..., description="Relationship ID"),
     graph_manager: GraphManager = Depends(),
     api_key: ApiKey = Depends(get_api_key),
@@ -105,7 +105,7 @@ async def get_relationship(
     status_code=status.HTTP_201_CREATED,
     summary="Create relationship",
     description="Create a new relationship",
-    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_PERMISSION_RELATIONSHIPS))],
 )
 async def create_relationship(
     relationship: RelationshipCreate,
@@ -130,7 +130,7 @@ async def create_relationship(
             )
         
         # Create relationship in graph manager
-        new_relationship = await graph_manager.add_edge(
+        new_relationship = await graph_manager.add_relationship(
             source_id=relationship.source_id,
             target_id=relationship.target_id,
             type=relationship.type,
@@ -152,9 +152,9 @@ async def create_relationship(
     response_model=Relationship,
     summary="Update relationship",
     description="Update an existing relationship",
-    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_PERMISSION_RELATIONSHIPS))],
 )
-async def update_relationship(
+async def update_edge(
     relationship_id: str = Path(..., description="Relationship ID"),
     relationship: RelationshipUpdate = None,
     graph_manager: GraphManager = Depends(),
@@ -193,9 +193,9 @@ async def update_relationship(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete relationship",
     description="Delete a relationship by ID",
-    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_PERMISSION_RELATIONSHIPS))],
 )
-async def delete_relationship(
+async def remove_edge(
     relationship_id: str = Path(..., description="Relationship ID"),
     graph_manager: GraphManager = Depends(),
     api_key: ApiKey = Depends(get_api_key),
@@ -212,7 +212,7 @@ async def delete_relationship(
             )
         
         # Delete relationship from graph manager
-        await graph_manager.delete_edge(relationship_id)
+        await graph_manager.remove_edge(relationship_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -227,7 +227,7 @@ async def delete_relationship(
     status_code=status.HTTP_201_CREATED,
     summary="Create multiple relationships",
     description="Create multiple relationships in a single request",
-    dependencies=[Depends(has_permission(Permission.WRITE_RELATIONSHIPS))],
+    dependencies=[Depends(has_permission(Permission.WRITE_PERMISSION_RELATIONSHIPS))],
 )
 async def create_relationships_batch(
     relationships: List[RelationshipCreate],
@@ -255,7 +255,7 @@ async def create_relationships_batch(
                 )
             
             # Create relationship
-            new_relationship = await graph_manager.add_edge(
+            new_relationship = await graph_manager.add_relationship(
                 source_id=relationship.source_id,
                 target_id=relationship.target_id,
                 type=relationship.type,

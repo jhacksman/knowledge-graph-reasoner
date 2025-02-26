@@ -98,8 +98,8 @@ async def run_expansion(
         )
         
         # Update expansion status
-        total_concepts = len(await graph_manager.get_all_nodes())
-        total_relationships = len(await graph_manager.get_all_edges())
+        total_concepts = len(await graph_manager.get_concept())
+        total_relationships = len(await graph_manager.get_relationships())
         
         EXPANSIONS[expansion_id].update({
             "status": "completed",
@@ -150,8 +150,8 @@ async def start_expansion(
             "id": expansion_id,
             "config": config.dict(),
             "current_iteration": 0,
-            "total_concepts": len(await graph_manager.get_all_nodes()),
-            "total_relationships": len(await graph_manager.get_all_edges()),
+            "total_concepts": len(await graph_manager.get_concept()),
+            "total_relationships": len(await graph_manager.get_relationships()),
             "status": "pending",
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
