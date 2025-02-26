@@ -44,7 +44,8 @@ pipeline = ReasoningPipeline(llm=llm, graph=graph_manager)
 ```python
 # Initialize LLM with config
 from src.reasoning.llm import VeniceLLMConfig
-config = VeniceLLMConfig(api_key="YOUR_API_KEY")
+# Using environment variables for sensitive configuration
+config = VeniceLLMConfig(api_key=os.environ.get("VENICE_API_KEY", ""))
 llm = VeniceLLM(config=config)
 ```
 - All other instances of VeniceLLM initialization in the codebase include the required `config` argument.
