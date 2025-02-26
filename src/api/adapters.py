@@ -1,5 +1,5 @@
 """Adapter functions for converting between API models and internal models."""
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, TypedDict, cast
 import uuid
 from datetime import datetime
 import numpy as np
@@ -19,23 +19,29 @@ def node_to_concept(node: Node) -> Concept:
         Concept: A Concept object for the API model
     """
     # Extract embedding from metadata if present
-    embedding = None
-    if node.metadata and "embedding" in node.metadata:
-        embedding = node.metadata["embedding"]
+    embedding: Optional[List[float]] = None
+    node_metadata = node.metadata or {}
+    
+    if "embedding" in node_metadata:
+        embedding_value = node_metadata["embedding"]
+        if isinstance(embedding_value, list):
+            embedding = embedding_value
     
     # Extract concept attributes from node content and metadata
     # Map node.content to concept.name as the primary identifier
     name = node.content
     
     # Extract description and domain from metadata if available
-    description = node.metadata.get("description") if node.metadata else None
-    domain = node.metadata.get("domain") if node.metadata else None
+    description = node_metadata.get("description") if node_metadata else None
+    domain = node_metadata.get("domain") if node_metadata else None
     
     # Extract other attributes from metadata
-    attributes = {
-        k: v for k, v in (node.metadata or {}).items() 
-        if k not in ["embedding", "description", "domain"]
-    }
+    attributes: Dict[str, Any] = {}
+    if node_metadata:
+        attributes = {
+            k: v for k, v in node_metadata.items() 
+            if k not in ["embedding", "description", "domain"]
+        }
     
     # Create concept from node
     return Concept(
@@ -76,7 +82,7 @@ def concept_to_node(concept: ConceptCreate) -> Dict[str, Any]:
     content = concept.name
     
     # Prepare metadata including description and domain
-    metadata = {}
+    metadata: Dict[str, Any] = {}
     
     if concept.description:
         metadata["description"] = concept.description
@@ -86,12 +92,14 @@ def concept_to_node(concept: ConceptCreate) -> Dict[str, Any]:
     
     # Include any additional attributes
     if concept.attributes:
-        metadata.update(concept.attributes)
+        for k, v in concept.attributes.items():
+            metadata[k] = v
     
     # Return node parameters
     return {
         "content": content,
-        "metadata": metadata
+        "metadata": metadata,
+        "embedding": None  # Add explicit None for embedding
     }
 
 
@@ -106,14 +114,14 @@ def concept_update_to_node_update(concept: ConceptUpdate, concept_id: str) -> Di
         Dict[str, Any]: Parameters for updating a Node
     """
     # Prepare update parameters
-    update = {}
+    update: Dict[str, Any] = {}
     
     if concept.name is not None:
         update["content"] = concept.name
     
     # Update metadata if any of the metadata-related fields are provided
     metadata_updated = False
-    metadata_dict = {}
+    metadata_dict: Dict[str, Any] = {}
     
     if concept.description is not None:
         metadata_dict["description"] = concept.description
@@ -124,9 +132,9 @@ def concept_update_to_node_update(concept: ConceptUpdate, concept_id: str) -> Di
         metadata_updated = True
     
     if concept.attributes is not None:
-        # Cast attributes to Dict[str, Any] to satisfy mypy
-        attr_dict: Dict[str, Any] = concept.attributes
-        metadata_dict.update(attr_dict)
+        # Merge the attributes explicitly
+        for k, v in concept.attributes.items():
+            metadata_dict[k] = v
         metadata_updated = True
     
     if metadata_updated:
@@ -148,8 +156,15 @@ def edge_to_relationship(edge: Edge) -> Relationship:
     edge_id = getattr(edge, "id", str(uuid.uuid4()))
     
     # Extract weight and attributes from metadata
-    weight = edge.metadata.get("weight", 1.0) if edge.metadata else 1.0
-    attributes = edge.metadata.get("attributes", {}) if edge.metadata else {}
+    edge_metadata = edge.metadata or {}
+    weight = edge_metadata.get("weight", 1.0)
+    
+    # Handle attributes safely
+    attributes: Dict[str, Any] = {}
+    if "attributes" in edge_metadata:
+        attr_value = edge_metadata["attributes"]
+        if isinstance(attr_value, dict):
+            attributes = attr_value
     
     # Create relationship from edge
     return Relationship(
@@ -176,9 +191,17 @@ def edges_to_relationships(edges: List[Edge]) -> List[Relationship]:
     return [edge_to_relationship(edge) for edge in edges]
 
 
+class RelationshipParams(TypedDict, total=False):
+    """Type definition for relationship parameters."""
+    source_id: Optional[str]
+    target_id: Optional[str]
+    relationship_type: Optional[str]
+    metadata: Dict[str, Any]
+
+
 def map_relationship_params(
     relationship: Union[Relationship, RelationshipCreate, RelationshipUpdate]
-) -> Dict[str, Any]:
+) -> RelationshipParams:
     """Map relationship parameters to GraphManager method parameters.
     
     This function standardizes parameter mapping between API models and GraphManager methods.
@@ -190,12 +213,40 @@ def map_relationship_params(
     Returns:
         Dict with GraphManager method parameter names
     """
+    # Get relationship type, handling the attribute access safely
+    rel_type: Optional[str] = None
+    if hasattr(relationship, "type"):
+        rel_type = getattr(relationship, "type")
+    
+    # Get source_id and target_id if they exist
+    source_id: Optional[str] = None
+    if hasattr(relationship, "source_id"):
+        source_id = getattr(relationship, "source_id")
+    
+    target_id: Optional[str] = None
+    if hasattr(relationship, "target_id"):
+        target_id = getattr(relationship, "target_id")
+    
+    # Prepare weight and attributes for metadata
+    weight = 1.0
+    if hasattr(relationship, "weight"):
+        weight_val = getattr(relationship, "weight")
+        if weight_val is not None:
+            weight = weight_val
+    
+    attributes: Dict[str, Any] = {}
+    if hasattr(relationship, "attributes"):
+        attrs = getattr(relationship, "attributes")
+        if attrs is not None:
+            attributes = attrs
+    
+    # Create and return the properly typed parameter dictionary
     return {
-        "source_id": getattr(relationship, "source_id", None),
-        "target_id": getattr(relationship, "target_id", None),
-        "relationship_type": getattr(relationship, "type", None),
+        "source_id": source_id,
+        "target_id": target_id,
+        "relationship_type": rel_type,
         "metadata": {
-            "weight": getattr(relationship, "weight", 1.0),
-            "attributes": getattr(relationship, "attributes", {})
+            "weight": weight,
+            "attributes": attributes
         }
     }
