@@ -1,5 +1,5 @@
 """Graph metrics implementation."""
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import numpy as np
 import networkx as nx
 import logging
@@ -10,9 +10,13 @@ log = logging.getLogger(__name__)
 class GraphMetrics:
     """Computes and tracks graph metrics."""
     
-    def __init__(self):
-        """Initialize metrics tracker."""
-        self.graph = nx.Graph()
+    def __init__(self, graph: Optional[nx.Graph] = None):
+        """Initialize metrics tracker.
+        
+        Args:
+            graph: Optional NetworkX graph to use
+        """
+        self.graph = graph if graph is not None else nx.Graph()
         self._history: List[Dict[str, Any]] = []
     
     async def compute_modularity(self) -> float:
