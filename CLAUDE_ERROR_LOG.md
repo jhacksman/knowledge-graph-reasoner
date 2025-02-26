@@ -337,3 +337,40 @@ I'm working on the knowledge-graph-reasoner project and need to implement a comp
 
 Also, suggest how to update the reasoning pipeline to integrate with the FastAPI interface for seamless interaction with the knowledge graph.
 ```
+
+## Type Checking Errors in API Routes and GraphManager Interface
+
+```prompt
+I need help fixing the type checking errors in my knowledge-graph-reasoner project. The main issues are in the API routes and GraphManager interface.
+
+The most critical problems:
+
+1. MilvusVectorStore vs MilvusStore naming inconsistency:
+   - In src/vector_store/milvus_store.py, the class is named MilvusStore
+   - But in src/api/routes/ files and src/api/main.py, it's referenced as MilvusVectorStore
+   - We need to update all references to use the consistent name MilvusStore
+
+2. GraphManager method name mismatches:
+   - The API routes call methods like get_concepts, add_node, search_concepts_by_embedding
+   - But the GraphManager class defines methods like get_concept, add_concept, get_similar_concepts
+   - We need to align these method names across the codebase
+
+3. Method signature mismatches:
+   - For example, get_similar_concepts is being called with query_embedding and similarity_threshold parameters
+   - But its implementation expects different parameter names and structure
+   - We need to update all method calls to match their implementations
+
+4. Missing positional arguments:
+   - The GraphManager is initialized without a required vector_store argument in some places
+   - We need to ensure all required arguments are provided
+
+Please analyze src/graph/manager.py and src/api/routes/* files and suggest specific code changes to:
+1. Make all GraphManager method calls consistent with their implementations
+2. Fix the MilvusVectorStore vs MilvusStore naming inconsistency
+3. Update method signatures to match expected parameters
+4. Ensure all required arguments are provided when initializing objects
+5. Fix any return type mismatches between declarations and implementations
+
+The project uses Python 3.12 with FastAPI for the API interface and mypy for type checking.
+```
+
