@@ -90,8 +90,18 @@ async def custom_swagger_ui_html():
 @app.middleware("http")
 async def add_graph_manager(request: Request, call_next):
     """Add GraphManager to request state."""
-    # Initialize GraphManager
-    graph_manager = GraphManager(vector_store=None)
+    # Initialize GraphManager with a proper vector store
+    from src.vector_store.milvus_store import MilvusStore
+    
+    # Create a MilvusStore instance with default parameters
+    vector_store = MilvusStore(
+        uri="http://localhost:19530",
+        dim=1536,
+        default_collection="knowledge_graph"
+    )
+    
+    # Initialize GraphManager with the vector store
+    graph_manager = GraphManager(vector_store=vector_store)
     
     # Add to request state
     request.state.graph_manager = graph_manager

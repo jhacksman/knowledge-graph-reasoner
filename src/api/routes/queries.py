@@ -52,7 +52,7 @@ async def execute_query(query_id: str, query_text: str, max_results: int, includ
         
         # Initialize LLM with config
         from src.reasoning.llm import VeniceLLMConfig
-        config = VeniceLLMConfig(api_key="YOUR_API_KEY", model_name="deepseek-r1-671b")
+        config = VeniceLLMConfig(api_key="YOUR_API_KEY")
         llm = VeniceLLM(config=config)
         pipeline = ReasoningPipeline(llm=llm, graph=graph_manager)
         
