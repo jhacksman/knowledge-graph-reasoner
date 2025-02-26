@@ -7,7 +7,8 @@ from src.api.models import (
 )
 from src.api.auth import get_api_key, has_permission, Permission, ApiKey
 from src.graph.manager import GraphManager
-from src.reasoning.llm import VeniceLLM, VeniceLLMConfig
+from src.reasoning.llm import VeniceLLM
+from src.reasoning.llm_factory import create_llm
 import logging
 
 # Setup logging
@@ -40,7 +41,7 @@ async def search_concepts(
     """Perform semantic search across concepts."""
     try:
         # Initialize LLM for embedding
-        llm = VeniceLLM(config=VeniceLLMConfig(api_key=""))  # Empty string for type checking, real key from env vars
+        llm = create_llm()
         
         # Generate embedding for query
         query_embedding = await llm.embed_text(request.query)
@@ -100,7 +101,7 @@ async def search_by_text(
     """Search concepts by text."""
     try:
         # Initialize LLM for embedding
-        llm = VeniceLLM(config=VeniceLLMConfig(api_key=""))  # Empty string for type checking, real key from env vars
+        llm = create_llm()
         
         # Generate embedding for query
         query_embedding = await llm.embed_text(text)

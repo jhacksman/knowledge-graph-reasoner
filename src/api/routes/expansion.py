@@ -51,10 +51,9 @@ async def run_expansion(
         # ReasoningPipeline requires llm and graph parameters
         from src.reasoning.llm import VeniceLLM
         
-        # Create a VeniceLLM instance with default config
-        from src.reasoning.llm import VeniceLLMConfig
-        llm_config = VeniceLLMConfig(api_key="dummy-api-key")  # Using dummy key for testing
-        llm = VeniceLLM(config=llm_config)
+        # Initialize LLM with factory
+        from src.reasoning.llm_factory import create_llm
+        llm = create_llm()
         
         # Initialize reasoning pipeline
         pipeline = ReasoningPipeline(llm=llm, graph=graph_manager)
