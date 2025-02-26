@@ -30,7 +30,6 @@ httpx>=0.27.0  # For HTTP client
 
 # Type stubs for development
 types-Markdown>=3.4.2.3
-types-aiohttp
 types-pytest>=7.4.0
 types-requests>=2.31.0
 types-setuptools>=68.2.0
