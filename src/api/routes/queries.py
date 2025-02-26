@@ -50,10 +50,9 @@ async def execute_query(query_id: str, query_text: str, max_results: int, includ
         graph_manager = GraphManager(vector_store=vector_store, metrics=metrics)
         from src.reasoning.llm import VeniceLLM
         
-        # Initialize LLM with config
-        from src.reasoning.llm import VeniceLLMConfig
-        config = VeniceLLMConfig(api_key="YOUR_API_KEY")
-        llm = VeniceLLM(config=config)
+        # Initialize LLM with factory
+        from src.reasoning.llm_factory import create_llm
+        llm = create_llm()
         pipeline = ReasoningPipeline(llm=llm, graph=graph_manager)
         
         # Process query using reasoning pipeline
