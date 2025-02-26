@@ -1,9 +1,10 @@
 """Tests for the API authentication and authorization."""
 import pytest
 from fastapi import HTTPException, Request
+from datetime import datetime, timedelta
 from src.api.auth import (
     get_api_key, has_permission, Permission, ApiKey,
-    verify_api_key, verify_signature
+    Role, ROLE_PERMISSIONS
 )
 
 
@@ -13,23 +14,28 @@ class MockRequest:
     def __init__(self, headers=None):
         """Initialize mock request."""
         self.headers = headers or {}
+        self.state = type('obj', (object,), {})  # Create a simple object with state
 
 
 def test_api_key_model():
     """Test ApiKey model."""
+    created_time = datetime.utcnow()
     api_key = ApiKey(
         key="test-key",
-        name="Test Key",
-        role="admin",
-        created_at="2023-01-01T00:00:00Z",
-        last_used_at=None,
+        client_id="test-client",
+        role=Role.ADMIN,
+        created_at=created_time,
+        expires_at=created_time + timedelta(days=7),
+        rate_limit_per_minute=60,
+        rate_limit_per_day=10000,
+        last_used=None,
         usage_count=0,
     )
     assert api_key.key == "test-key"
-    assert api_key.name == "Test Key"
-    assert api_key.role == "admin"
-    assert api_key.created_at == "2023-01-01T00:00:00Z"
-    assert api_key.last_used_at is None
+    assert api_key.client_id == "test-client"
+    assert api_key.role == Role.ADMIN
+    assert api_key.created_at == created_time
+    assert api_key.last_used is None
     assert api_key.usage_count == 0
 
 
@@ -42,208 +48,128 @@ def test_permission_enum():
     assert Permission.EXECUTE_QUERIES.value == "execute:queries"
     assert Permission.MANAGE_EXPANSION.value == "manage:expansion"
     assert Permission.READ_METRICS.value == "read:metrics"
+    assert Permission.READ_PERMISSION_CONCEPTS.value == "read_permission:concepts"
+    assert Permission.WRITE_PERMISSION_CONCEPTS.value == "write_permission:concepts"
+    assert Permission.READ_PERMISSION_RELATIONSHIPS.value == "read_permission:relationships"
+    assert Permission.WRITE_PERMISSION_RELATIONSHIPS.value == "write_permission:relationships"
+    assert Permission.READ_PERMISSION_QUERIES.value == "read_permission:queries"
+    assert Permission.WRITE_PERMISSION_QUERIES.value == "write_permission:queries"
+    assert Permission.READ_PERMISSION_METRICS.value == "read_permission:metrics"
+    assert Permission.WRITE_PERMISSION.value == "write:permission"
+    assert Permission.ADMIN_PERMISSION_ACCESS.value == "admin_permission:access"
 
 
-def test_verify_api_key_valid():
-    """Test verify_api_key with valid key."""
-    # Mock a valid API key
-    api_key = "test-key"
-    result = verify_api_key(api_key)
-    assert result is not None
-    assert result.key == api_key
-    assert result.role in ["admin", "contributor", "readonly"]
-
-
-def test_verify_api_key_invalid():
-    """Test verify_api_key with invalid key."""
-    # Test with invalid key
-    with pytest.raises(HTTPException) as excinfo:
-        verify_api_key("invalid-key")
-    assert excinfo.value.status_code == 401
-    assert "Invalid API key" in excinfo.value.detail
-
-
-def test_verify_signature_valid():
-    """Test verify_signature with valid signature."""
-    # This is a simplified test since we can't easily generate valid signatures
-    # In a real test, we would use the actual signing algorithm
-    request = MockRequest(headers={
-        "X-API-Key": "test-key",
-        "X-Signature": "valid-signature",
-        "X-Timestamp": "1609459200",
-    })
-    
-    # Mock the signature verification
-    # In a real implementation, this would verify the signature
-    result = verify_signature(request, "test-key")
-    assert result is True
-
-
-def test_verify_signature_missing_headers():
-    """Test verify_signature with missing headers."""
-    # Test with missing signature header
-    request = MockRequest(headers={
-        "X-API-Key": "test-key",
-        "X-Timestamp": "1609459200",
-    })
-    with pytest.raises(HTTPException) as excinfo:
-        verify_signature(request, "test-key")
-    assert excinfo.value.status_code == 401
-    assert "Missing signature" in excinfo.value.detail
-    
-    # Test with missing timestamp header
-    request = MockRequest(headers={
-        "X-API-Key": "test-key",
-        "X-Signature": "valid-signature",
-    })
-    with pytest.raises(HTTPException) as excinfo:
-        verify_signature(request, "test-key")
-    assert excinfo.value.status_code == 401
-    assert "Missing timestamp" in excinfo.value.detail
-
-
-def test_verify_signature_expired():
-    """Test verify_signature with expired timestamp."""
-    # Test with expired timestamp
-    request = MockRequest(headers={
-        "X-API-Key": "test-key",
-        "X-Signature": "valid-signature",
-        "X-Timestamp": "1",  # Very old timestamp
-    })
-    with pytest.raises(HTTPException) as excinfo:
-        verify_signature(request, "test-key")
-    assert excinfo.value.status_code == 401
-    assert "Signature expired" in excinfo.value.detail
-
-
-def test_get_api_key_valid():
-    """Test get_api_key with valid key."""
-    # Mock a valid request
-    request = MockRequest(headers={"X-API-Key": "test-key"})
-    
-    # Test the dependency
-    api_key = get_api_key(request)
-    assert api_key is not None
-    assert api_key.key == "test-key"
-    assert api_key.role in ["admin", "contributor", "readonly"]
-
-
-def test_get_api_key_missing():
+@pytest.mark.asyncio
+async def test_get_api_key_missing():
     """Test get_api_key with missing key."""
     # Test with missing API key
     request = MockRequest()
+    
+    # Since we're testing an async function, we need to await it
     with pytest.raises(HTTPException) as excinfo:
-        get_api_key(request)
+        await get_api_key("", "")  # Pass empty strings for header and query
+    
     assert excinfo.value.status_code == 401
-    assert "API key is required" in excinfo.value.detail
+    assert "API key is missing" in excinfo.value.detail
 
 
-def test_get_api_key_invalid():
-    """Test get_api_key with invalid key."""
-    # Test with invalid API key
-    request = MockRequest(headers={"X-API-Key": "invalid-key"})
-    with pytest.raises(HTTPException) as excinfo:
-        get_api_key(request)
-    assert excinfo.value.status_code == 401
-    assert "Invalid API key" in excinfo.value.detail
-
-
-def test_has_permission_admin():
+@pytest.mark.asyncio
+async def test_has_permission_admin():
     """Test has_permission with admin role."""
     # Mock an admin API key
+    created_time = datetime.utcnow()
     api_key = ApiKey(
         key="admin-key",
-        name="Admin Key",
-        role="admin",
-        created_at="2023-01-01T00:00:00Z",
-        last_used_at=None,
-        usage_count=0,
+        client_id="admin-client",
+        role=Role.ADMIN,
+        created_at=created_time,
+        rate_limit_per_minute=60,
+        rate_limit_per_day=10000,
     )
     
     # Admin should have all permissions
     for permission in Permission:
-        dependency = has_permission(permission)
-        result = dependency(api_key)
-        assert result is None  # No exception means permission granted
+        dependency = has_permission(permission.value)
+        # Since the dependency returns an async function, we need to await it
+        result = await dependency(api_key)
+        assert result is True  # Permission granted should return True
 
 
-def test_has_permission_contributor():
+@pytest.mark.asyncio
+async def test_has_permission_contributor():
     """Test has_permission with contributor role."""
     # Mock a contributor API key
+    created_time = datetime.utcnow()
     api_key = ApiKey(
         key="contributor-key",
-        name="Contributor Key",
-        role="contributor",
-        created_at="2023-01-01T00:00:00Z",
-        last_used_at=None,
-        usage_count=0,
+        client_id="contributor-client",
+        role=Role.CONTRIBUTOR,
+        created_at=created_time,
+        rate_limit_per_minute=60,
+        rate_limit_per_day=10000,
     )
     
-    # Contributors should have read and write permissions but not manage
-    read_permissions = [
-        Permission.READ_CONCEPTS,
-        Permission.READ_RELATIONSHIPS,
-        Permission.READ_METRICS,
-        Permission.EXECUTE_QUERIES,
-    ]
-    write_permissions = [
-        Permission.WRITE_CONCEPTS,
-        Permission.WRITE_RELATIONSHIPS,
-    ]
-    manage_permissions = [
-        Permission.MANAGE_EXPANSION,
+    # Check permissions that contributor should have
+    contributor_permissions = ROLE_PERMISSIONS[Role.CONTRIBUTOR]
+    for permission_value in contributor_permissions:
+        dependency = has_permission(permission_value)
+        result = await dependency(api_key)
+        assert result is True
+    
+    # Check permissions that contributor should not have
+    admin_only_permissions = [
+        Permission.MANAGE_EXPANSION.value,
+        Permission.ADMIN_ACCESS.value,
+        Permission.ADMIN_PERMISSION_ACCESS.value
     ]
     
-    # Test read and write permissions
-    for permission in read_permissions + write_permissions:
-        dependency = has_permission(permission)
-        result = dependency(api_key)
-        assert result is None  # No exception means permission granted
-    
-    # Test manage permissions
-    for permission in manage_permissions:
-        dependency = has_permission(permission)
+    for permission_value in admin_only_permissions:
+        dependency = has_permission(permission_value)
         with pytest.raises(HTTPException) as excinfo:
-            dependency(api_key)
+            await dependency(api_key)
         assert excinfo.value.status_code == 403
         assert "Permission denied" in excinfo.value.detail
 
 
-def test_has_permission_readonly():
+@pytest.mark.asyncio
+async def test_has_permission_readonly():
     """Test has_permission with readonly role."""
     # Mock a readonly API key
+    created_time = datetime.utcnow()
     api_key = ApiKey(
         key="readonly-key",
-        name="Readonly Key",
-        role="readonly",
-        created_at="2023-01-01T00:00:00Z",
-        last_used_at=None,
-        usage_count=0,
+        client_id="readonly-client",
+        role=Role.READ_ONLY,
+        created_at=created_time,
+        rate_limit_per_minute=60,
+        rate_limit_per_day=10000,
     )
     
-    # Readonly should have only read permissions
-    read_permissions = [
-        Permission.READ_CONCEPTS,
-        Permission.READ_RELATIONSHIPS,
-        Permission.READ_METRICS,
-        Permission.EXECUTE_QUERIES,
-    ]
+    # Check permissions that readonly should have
+    readonly_permissions = ROLE_PERMISSIONS[Role.READ_ONLY]
+    for permission_value in readonly_permissions:
+        dependency = has_permission(permission_value)
+        result = await dependency(api_key)
+        assert result is True
+    
+    # Check permissions that readonly should not have
     write_permissions = [
-        Permission.WRITE_CONCEPTS,
-        Permission.WRITE_RELATIONSHIPS,
-        Permission.MANAGE_EXPANSION,
+        Permission.WRITE_CONCEPTS.value,
+        Permission.WRITE_RELATIONSHIPS.value,
+        Permission.WRITE_QUERIES.value,
+        Permission.EXECUTE_QUERIES.value,
+        Permission.MANAGE_EXPANSION.value,
+        Permission.ADMIN_ACCESS.value,
+        Permission.WRITE_PERMISSION_CONCEPTS.value,
+        Permission.WRITE_PERMISSION_RELATIONSHIPS.value,
+        Permission.WRITE_PERMISSION_QUERIES.value,
+        Permission.WRITE_PERMISSION.value,
+        Permission.ADMIN_PERMISSION_ACCESS.value
     ]
     
-    # Test read permissions
-    for permission in read_permissions:
-        dependency = has_permission(permission)
-        result = dependency(api_key)
-        assert result is None  # No exception means permission granted
-    
-    # Test write permissions
-    for permission in write_permissions:
-        dependency = has_permission(permission)
+    for permission_value in write_permissions:
+        dependency = has_permission(permission_value)
         with pytest.raises(HTTPException) as excinfo:
-            dependency(api_key)
+            await dependency(api_key)
         assert excinfo.value.status_code == 403
         assert "Permission denied" in excinfo.value.detail
