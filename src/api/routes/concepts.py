@@ -1,13 +1,23 @@
 """API routes for concepts."""
-from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+import uuid
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
+
 from src.api.models import (
-    Concept, ConceptCreate, ConceptUpdate, ConceptList, 
-    PaginationParams, FilterParams, ErrorResponse
+    Concept,
+    ConceptCreate,
+    ConceptUpdate,
+    ConceptList,
+    PaginationParams,
+    ErrorResponse,
 )
 from src.api.auth import get_api_key, has_permission, Permission, ApiKey
 from src.graph.manager import GraphManager
-import logging
+from src.vector_store.milvus_store import MilvusVectorStore
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -17,8 +27,6 @@ router = APIRouter(
     prefix="/concepts",
     tags=["concepts"],
     responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
-        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
         status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": ErrorResponse},
     },
@@ -30,38 +38,38 @@ router = APIRouter(
     response_model=ConceptList,
     summary="List concepts",
     description="Get a paginated list of concepts with optional filtering",
-    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS))],
 )
 async def list_concepts(
     pagination: PaginationParams = Depends(),
     domain: Optional[str] = Query(None, description="Filter by domain"),
-    name_contains: Optional[str] = Query(None, description="Filter by name containing text"),
-    graph_manager: GraphManager = Depends(),
+    name_contains: Optional[str] = Query(None, description="Filter by name containing string"),
     api_key: ApiKey = Depends(get_api_key),
 ) -> ConceptList:
-    """Get a paginated list of concepts with optional filtering."""
+    """Get a paginated list of concepts."""
     try:
-        # Get concepts from graph manager
-        concepts = await graph_manager.get_all_nodes(
+        # Get graph manager from request state
+        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        
+        # Get concepts with pagination
+        concepts = await graph_manager.get_concepts(
             domain=domain,
             name_contains=name_contains,
-            skip=(pagination.page - 1) * pagination.limit,
+            skip=pagination.offset,
             limit=pagination.limit,
             sort_by=pagination.sort_by,
             sort_order=pagination.sort_order,
         )
         
         # Get total count
-        total = len(await graph_manager.get_all_nodes(domain=domain, name_contains=name_contains))
-        )
+        total = len(await graph_manager.get_concepts(domain=domain, name_contains=name_contains))
         
         # Calculate total pages
         pages = (total + pagination.limit - 1) // pagination.limit
         
         return ConceptList(
-            items=concepts,
+            concepts=concepts,
             total=total,
-            page=pagination.page,
+            skip=pagination.offset,
             limit=pagination.limit,
             pages=pages,
         )
@@ -78,17 +86,17 @@ async def list_concepts(
     response_model=Concept,
     summary="Get concept",
     description="Get a concept by ID",
-    dependencies=[Depends(has_permission(Permission.READ_CONCEPTS))],
 )
 async def get_concept(
-    concept_id: str = Path(..., description="Concept ID"),
-    include_embedding: bool = Query(False, description="Include embedding in response"),
-    graph_manager: GraphManager = Depends(),
+    concept_id: str,
     api_key: ApiKey = Depends(get_api_key),
 ) -> Concept:
     """Get a concept by ID."""
     try:
-        # Get concept from graph manager
+        # Get graph manager from request state
+        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        
+        # Get concept
         concept = await graph_manager.get_concept(concept_id)
         
         if not concept:
@@ -96,10 +104,6 @@ async def get_concept(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Concept with ID {concept_id} not found",
             )
-        
-        # Remove embedding if not requested
-        if not include_embedding and hasattr(concept, "embedding"):
-            concept.embedding = None
         
         return concept
     except HTTPException:
@@ -118,24 +122,29 @@ async def get_concept(
     status_code=status.HTTP_201_CREATED,
     summary="Create concept",
     description="Create a new concept",
-    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS))],
 )
 async def create_concept(
     concept: ConceptCreate,
-    graph_manager: GraphManager = Depends(),
     api_key: ApiKey = Depends(get_api_key),
+    _: None = Depends(has_permission(Permission.WRITE_PERMISSION)),
 ) -> Concept:
     """Create a new concept."""
     try:
-        # Create concept in graph manager
-        new_concept = await graph_manager.add_node(
+        # Get graph manager from request state
+        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        
+        # Create concept
+        concept_id = str(uuid.uuid4())
+        created_concept = await graph_manager.add_concept(
+            id=concept_id,
             name=concept.name,
             description=concept.description,
             domain=concept.domain,
             attributes=concept.attributes,
+            embedding=concept.get_embedding(),
         )
         
-        return new_concept
+        return created_concept
     except Exception as e:
         logger.exception(f"Error creating concept: {e}")
         raise HTTPException(
@@ -149,16 +158,18 @@ async def create_concept(
     response_model=Concept,
     summary="Update concept",
     description="Update an existing concept",
-    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS))],
 )
 async def update_concept(
-    concept_id: str = Path(..., description="Concept ID"),
-    concept: ConceptUpdate = None,
-    graph_manager: GraphManager = Depends(),
+    concept_id: str,
+    concept: ConceptUpdate,
     api_key: ApiKey = Depends(get_api_key),
+    _: None = Depends(has_permission(Permission.WRITE_PERMISSION)),
 ) -> Concept:
     """Update an existing concept."""
     try:
+        # Get graph manager from request state
+        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        
         # Check if concept exists
         existing_concept = await graph_manager.get_concept(concept_id)
         
@@ -168,13 +179,14 @@ async def update_concept(
                 detail=f"Concept with ID {concept_id} not found",
             )
         
-        # Update concept in graph manager
-        updated_concept = await graph_manager.update_node(
-            concept_id=concept_id,
+        # Update concept
+        updated_concept = await graph_manager.update_concept(
+            id=concept_id,
             name=concept.name,
             description=concept.description,
             domain=concept.domain,
             attributes=concept.attributes,
+            embedding=concept.get_embedding(),
         )
         
         return updated_concept
@@ -193,15 +205,17 @@ async def update_concept(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete concept",
     description="Delete a concept by ID",
-    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS))],
 )
 async def delete_concept(
-    concept_id: str = Path(..., description="Concept ID"),
-    graph_manager: GraphManager = Depends(),
+    concept_id: str,
     api_key: ApiKey = Depends(get_api_key),
+    _: None = Depends(has_permission(Permission.WRITE_PERMISSION)),
 ) -> None:
     """Delete a concept by ID."""
     try:
+        # Get graph manager from request state
+        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        
         # Check if concept exists
         existing_concept = await graph_manager.get_concept(concept_id)
         
@@ -211,8 +225,10 @@ async def delete_concept(
                 detail=f"Concept with ID {concept_id} not found",
             )
         
-        # Delete concept from graph manager
-        await graph_manager.delete_node(concept_id)
+        # Delete concept
+        await graph_manager.delete_concept(concept_id)
+        
+        return None
     except HTTPException:
         raise
     except Exception as e:
@@ -227,29 +243,34 @@ async def delete_concept(
     "/batch",
     response_model=List[Concept],
     status_code=status.HTTP_201_CREATED,
-    summary="Create multiple concepts",
+    summary="Create concepts batch",
     description="Create multiple concepts in a single request",
-    dependencies=[Depends(has_permission(Permission.WRITE_CONCEPTS))],
 )
 async def create_concepts_batch(
     concepts: List[ConceptCreate],
-    graph_manager: GraphManager = Depends(),
     api_key: ApiKey = Depends(get_api_key),
+    _: None = Depends(has_permission(Permission.WRITE_PERMISSION)),
 ) -> List[Concept]:
     """Create multiple concepts in a single request."""
     try:
-        # Create concepts in graph manager
-        new_concepts = []
+        # Get graph manager from request state
+        graph_manager = GraphManager(vector_store=MilvusVectorStore())
+        
+        # Create concepts
+        created_concepts = []
         for concept in concepts:
-            new_concept = await graph_manager.add_node(
+            concept_id = str(uuid.uuid4())
+            created_concept = await graph_manager.add_concept(
+                id=concept_id,
                 name=concept.name,
                 description=concept.description,
                 domain=concept.domain,
                 attributes=concept.attributes,
+                embedding=concept.get_embedding(),
             )
-            new_concepts.append(new_concept)
+            created_concepts.append(created_concept)
         
-        return new_concepts
+        return created_concepts
     except Exception as e:
         logger.exception(f"Error creating concepts batch: {e}")
         raise HTTPException(
