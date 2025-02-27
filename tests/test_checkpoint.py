@@ -477,7 +477,7 @@ class TestCheckpointManager:
         assert kwargs["import_structure"] is True
         assert kwargs["import_embeddings"] is True
         assert kwargs["import_metrics"] is True
-        
+    
     @pytest.mark.asyncio
     async def test_incremental_checkpoint_with_different_sizes(self, checkpoint_dir, small_graph_manager, medium_graph_manager):
         """Test incremental checkpoint creation and loading with different graph sizes."""
@@ -527,7 +527,10 @@ class TestCheckpointManager:
         
         assert metadata["incremental"] is True
         assert metadata["base_checkpoint"] == str(base_checkpoint)
-        """Test serialization and deserialization of graph state."""
+    
+    @pytest.mark.asyncio
+    async def test_serialization_deserialization_after_incremental(self, checkpoint_dir, mock_graph_manager):
+        """Test serialization and deserialization of graph state after incremental checkpoint."""
         config = {"test": "config"}
         manager = CheckpointManager(
             base_dir=checkpoint_dir,
@@ -538,7 +541,7 @@ class TestCheckpointManager:
         # Create checkpoint
         checkpoint_path = await manager.create_checkpoint(
             iteration=1,
-            description="Test serialization"
+            description="Test serialization after incremental"
         )
         
         # Check that graph manager export methods were called
