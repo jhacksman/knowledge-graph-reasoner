@@ -488,3 +488,185 @@ class GraphManager:
         except Exception as e:
             log.error(f"Failed to import full graph: {e}")
             raise
+            
+    async def get_all_node_ids(self) -> List[str]:
+        """Get all node IDs in the graph.
+        
+        Returns:
+            List[str]: List of node IDs
+        """
+        try:
+            node_ids = []
+            async for node in self.vector_store.get_all_nodes():
+                node_ids.append(node.id)
+            return node_ids
+        except Exception as e:
+            log.error(f"Failed to get all node IDs: {e}")
+            raise
+    
+    async def get_all_edge_ids(self) -> List[str]:
+        """Get all edge IDs in the graph.
+        
+        Returns:
+            List[str]: List of edge IDs
+        """
+        try:
+            edge_ids = []
+            async for edge in self.vector_store.get_all_edges():
+                if hasattr(edge, 'id'):
+                    edge_ids.append(edge.id)
+                else:
+                    # If edge doesn't have an ID, generate one from source and target
+                    edge_ids.append(f"{edge.source}_{edge.target}_{edge.type}")
+            return edge_ids
+        except Exception as e:
+            log.error(f"Failed to get all edge IDs: {e}")
+            raise
+    
+    async def get_nodes_stream(self, chunk_size: int = 1000) -> AsyncIterator[List[Node]]:
+        """Get nodes in chunks for streaming.
+        
+        Args:
+            chunk_size: Number of nodes to return in each chunk
+            
+        Yields:
+            List[Node]: Chunks of nodes
+        """
+        try:
+            # Get all node IDs
+            node_ids = await self.get_all_node_ids()
+            
+            # Yield nodes in chunks
+            for i in range(0, len(node_ids), chunk_size):
+                chunk_ids = node_ids[i:i+chunk_size]
+                nodes = []
+                for node_id in chunk_ids:
+                    node = await self.get_concept(node_id)
+                    if node:
+                        nodes.append(node)
+                yield nodes
+        except Exception as e:
+            log.error(f"Failed to stream nodes: {e}")
+            raise
+    
+    async def get_edges_stream(self, chunk_size: int = 1000) -> AsyncIterator[List[Edge]]:
+        """Get edges in chunks for streaming.
+        
+        Args:
+            chunk_size: Number of edges to return in each chunk
+            
+        Yields:
+            List[Edge]: Chunks of edges
+        """
+        try:
+            # Get all edge IDs
+            edge_ids = await self.get_all_edge_ids()
+            
+            # Yield edges in chunks
+            for i in range(0, len(edge_ids), chunk_size):
+                chunk_ids = edge_ids[i:i+chunk_size]
+                edges = []
+                
+                # For each edge ID, get the corresponding edge
+                # Since we don't have a direct get_relationship(id) method,
+                # we'll use the get_relationships method with filters
+                for edge_id in chunk_ids:
+                    # If the edge ID is a composite ID (source_target_type)
+                    if '_' in edge_id:
+                        source, target, edge_type = edge_id.split('_', 2)
+                        relationships = await self.get_relationships(
+                            source_id=source,
+                            target_id=target,
+                            relationship_type=edge_type
+                        )
+                        if relationships:
+                            edges.append(relationships[0])
+                    else:
+                        # If we have a direct edge ID, we would use a method like:
+                        # edge = await self.vector_store.get_edge(edge_id)
+                        # But since that's not available, we'll get all edges and filter
+                        async for edge in self.vector_store.get_all_edges():
+                            if hasattr(edge, 'id') and edge.id == edge_id:
+                                edges.append(edge)
+                                break
+                
+                yield edges
+        except Exception as e:
+            log.error(f"Failed to stream edges: {e}")
+            raise
+            
+    async def get_changes_since(self, timestamp: float) -> Dict[str, Any]:
+        """Get changes since a specific timestamp.
+        
+        Args:
+            timestamp: Unix timestamp to get changes since
+            
+        Returns:
+            Dict[str, Any]: Dictionary with changes:
+                - nodes: List of added/modified nodes
+                - edges: List of added/modified edges
+        """
+        try:
+            changes = {
+                "nodes": [],
+                "edges": []
+            }
+            
+            # Get all nodes and filter by timestamp
+            # Assuming nodes have a "modified_at" field in metadata
+            async for node in self.vector_store.get_all_nodes():
+                modified_at = node.metadata.get("modified_at", 0)
+                if modified_at > timestamp:
+                    # Remove embedding from metadata to avoid duplication
+                    node_dict = node.dict()
+                    if "embedding" in node_dict["metadata"]:
+                        del node_dict["metadata"]["embedding"]
+                    changes["nodes"].append(node_dict)
+            
+            # Get all edges and filter by timestamp
+            # Assuming edges have a "modified_at" field in metadata
+            async for edge in self.vector_store.get_all_edges():
+                modified_at = edge.metadata.get("modified_at", 0)
+                if modified_at > timestamp:
+                    changes["edges"].append(edge.dict())
+            
+            return changes
+            
+        except Exception as e:
+            log.error(f"Failed to get changes since {timestamp}: {e}")
+            raise
+            
+    async def apply_changes(self, changes: Dict[str, Any]) -> Dict[str, int]:
+        """Apply changes to the graph.
+        
+        Args:
+            changes: Dictionary with changes:
+                - nodes: List of added/modified nodes
+                - edges: List of added/modified edges
+                
+        Returns:
+            Dict[str, int]: Number of nodes and edges applied
+        """
+        try:
+            result = {
+                "nodes": 0,
+                "edges": 0
+            }
+            
+            # Apply node changes
+            for node_dict in changes.get("nodes", []):
+                node = Node(**node_dict)
+                await self.vector_store.update_node(node)
+                result["nodes"] += 1
+            
+            # Apply edge changes
+            for edge_dict in changes.get("edges", []):
+                edge = Edge(**edge_dict)
+                await self.vector_store.update_edge(edge)
+                result["edges"] += 1
+            
+            return result
+            
+        except Exception as e:
+            log.error(f"Failed to apply changes: {e}")
+            raise

@@ -29,7 +29,8 @@ class CheckpointMetadata:
         config: Dict[str, Any],
         version: str = "1.0.0",
         description: str = "",
-        checksum: Optional[str] = None
+        checksum: Optional[str] = None,
+        incremental: bool = False
     ):
         """Initialize checkpoint metadata.
         
@@ -40,6 +41,7 @@ class CheckpointMetadata:
             version: Checkpoint format version
             description: Optional description of the checkpoint
             checksum: Optional checksum of the checkpoint data
+            incremental: Whether this is an incremental checkpoint
         """
         self.timestamp = timestamp
         self.iteration = iteration
@@ -47,6 +49,7 @@ class CheckpointMetadata:
         self.version = version
         self.description = description
         self.checksum = checksum
+        self.incremental = incremental
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert metadata to dictionary.
@@ -61,7 +64,8 @@ class CheckpointMetadata:
             "config": self.config,
             "version": self.version,
             "description": self.description,
-            "checksum": self.checksum
+            "checksum": self.checksum,
+            "incremental": self.incremental
         }
     
     @classmethod
@@ -80,7 +84,8 @@ class CheckpointMetadata:
             config=data["config"],
             version=data.get("version", "1.0.0"),
             description=data.get("description", ""),
-            checksum=data.get("checksum")
+            checksum=data.get("checksum"),
+            incremental=data.get("incremental", False)
         )
 
 
@@ -175,11 +180,31 @@ class CheckpointManager:
             # Save graph structure
             await self._save_graph_structure(checkpoint_path)
             
+            # Compress graph structure if enabled
+            if self.compress:
+                structure_path = checkpoint_path / "graph_structure.json"
+                compressed_path = checkpoint_path / "graph_structure.json.gz"
+                if structure_path.exists():
+                    with open(structure_path, "rb") as f_in:
+                        with gzip.open(compressed_path, "wb") as f_out:
+                            f_out.write(f_in.read())
+                    structure_path.unlink()  # Remove uncompressed file
+            
             # Save embeddings
             await self._save_embeddings(checkpoint_path)
             
             # Save metrics history
             await self._save_metrics(checkpoint_path)
+            
+            # Compress metrics if enabled
+            if self.compress:
+                metrics_path = checkpoint_path / "metrics.json"
+                compressed_path = checkpoint_path / "metrics.json.gz"
+                if metrics_path.exists():
+                    with open(metrics_path, "rb") as f_in:
+                        with gzip.open(compressed_path, "wb") as f_out:
+                            f_out.write(f_in.read())
+                    metrics_path.unlink()  # Remove uncompressed file
             
             # Create metadata
             metadata = CheckpointMetadata(
@@ -213,15 +238,43 @@ class CheckpointManager:
                 shutil.rmtree(checkpoint_path)
             raise
     
-    async def _save_graph_structure(self, checkpoint_path: Path) -> None:
-        """Save graph structure to checkpoint.
+    async def _save_graph_structure(self, checkpoint_path: Path, chunk_size: int = 1000) -> None:
+        """Save graph structure to checkpoint with streaming support.
         
         Args:
             checkpoint_path: Path to checkpoint directory
+            chunk_size: Number of nodes/edges to process at once
         """
-        # Export graph structure using GraphManager
         structure_path = checkpoint_path / "graph_structure.json"
-        await self.graph_manager.export_graph_structure(structure_path, compress=False)
+        
+        # Check if streaming methods are available
+        if hasattr(self.graph_manager, 'get_nodes_stream') and hasattr(self.graph_manager, 'get_edges_stream'):
+            # Use streaming to handle large graphs
+            with open(structure_path, "w") as f:
+                f.write('{"nodes": [')
+                
+                # Write nodes in chunks
+                node_count = 0
+                async for nodes_chunk in self.graph_manager.get_nodes_stream(chunk_size):
+                    if node_count > 0:
+                        f.write(',')
+                    f.write(','.join([json.dumps(node.to_dict()) for node in nodes_chunk]))
+                    node_count += len(nodes_chunk)
+                
+                f.write('], "edges": [')
+                
+                # Write edges in chunks
+                edge_count = 0
+                async for edges_chunk in self.graph_manager.get_edges_stream(chunk_size):
+                    if edge_count > 0:
+                        f.write(',')
+                    f.write(','.join([json.dumps(edge.to_dict()) for edge in edges_chunk]))
+                    edge_count += len(edges_chunk)
+                
+                f.write(']}')
+        else:
+            # Fall back to standard export if streaming methods are not available
+            await self.graph_manager.export_graph_structure(structure_path, compress=False)
     
     async def _save_embeddings(self, checkpoint_path: Path) -> None:
         """Save embeddings to checkpoint.
@@ -450,6 +503,84 @@ class CheckpointManager:
         
         return checkpoints
     
+    async def create_incremental_checkpoint(self, iteration: int, description: str = "") -> Path:
+        """Create incremental checkpoint of current graph state.
+        
+        Args:
+            iteration: Current iteration number
+            description: Optional description of the checkpoint
+            
+        Returns:
+            Path: Path to created checkpoint
+        """
+        checkpoint_path = self.get_checkpoint_path(iteration)
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Creating incremental checkpoint at {checkpoint_path}")
+        
+        try:
+            # Get changes since last checkpoint
+            last_checkpoint = None
+            checkpoints = await self.list_checkpoints()
+            if checkpoints:
+                last_checkpoint = Path(checkpoints[0]["path"])
+            
+            # Save only changed nodes and edges
+            if last_checkpoint:
+                changes = await self.graph_manager.get_changes_since(
+                    self.last_checkpoint_time
+                )
+                
+                # Save changes
+                changes_path = checkpoint_path / "changes.json"
+                with open(changes_path, "w") as f:
+                    json.dump(changes, f)
+                
+                # Save reference to base checkpoint
+                base_path = checkpoint_path / "base_checkpoint.txt"
+                with open(base_path, "w") as f:
+                    f.write(str(last_checkpoint))
+            else:
+                # No previous checkpoint, create full checkpoint
+                await self._save_graph_structure(checkpoint_path)
+                await self._save_embeddings(checkpoint_path)
+            
+            # Save metrics history
+            await self._save_metrics(checkpoint_path)
+            
+            # Create metadata
+            metadata = CheckpointMetadata(
+                timestamp=time.time(),
+                iteration=iteration,
+                config=self.config,
+                description=description,
+                incremental=last_checkpoint is not None
+            )
+            
+            # Calculate checksum
+            checksum = await self._calculate_checksum(checkpoint_path)
+            metadata.checksum = checksum
+            
+            # Save metadata
+            await self._save_metadata(checkpoint_path, metadata)
+            
+            # Update last checkpoint time and iteration
+            self.last_checkpoint_time = time.time()
+            self.last_checkpoint_iteration = iteration
+            
+            # Clean up old checkpoints
+            await self._cleanup_old_checkpoints()
+            
+            logger.info(f"Incremental checkpoint created successfully at {checkpoint_path}")
+            return checkpoint_path
+            
+        except Exception as e:
+            logger.error(f"Failed to create incremental checkpoint: {e}")
+            # Clean up failed checkpoint
+            if checkpoint_path.exists():
+                shutil.rmtree(checkpoint_path)
+            raise
+            
     async def load_checkpoint(self, checkpoint_path: Union[str, Path]) -> Tuple[bool, str]:
         """Load checkpoint and restore graph state.
         
@@ -484,16 +615,42 @@ class CheckpointManager:
                 # Apply version-specific transformations if needed
                 await self._handle_version_compatibility(checkpoint_path, metadata.version)
             
-            # Import full graph from checkpoint
-            import_result = await self.graph_manager.import_full_graph(
-                directory=checkpoint_path,
-                import_structure=True,
-                import_embeddings=True,
-                import_metrics=True
-            )
+            # Check if this is an incremental checkpoint
+            if metadata.incremental:
+                # Load base checkpoint first
+                base_path_file = checkpoint_path / "base_checkpoint.txt"
+                if base_path_file.exists():
+                    with open(base_path_file, "r") as f:
+                        base_path = Path(f.read().strip())
+                    
+                    # Load base checkpoint
+                    base_success, base_message = await self.load_checkpoint(base_path)
+                    if not base_success:
+                        logger.warning(f"Failed to load base checkpoint: {base_message}")
+                    
+                    # Apply changes
+                    changes_path = checkpoint_path / "changes.json"
+                    if changes_path.exists():
+                        with open(changes_path, "r") as f:
+                            changes = json.load(f)
+                        
+                        # Apply changes to graph
+                        await self.graph_manager.apply_changes(changes)
+                    else:
+                        return False, "Changes file not found in incremental checkpoint"
+                else:
+                    return False, "Base checkpoint reference not found in incremental checkpoint"
+            else:
+                # Import full graph from checkpoint
+                import_result = await self.graph_manager.import_full_graph(
+                    directory=checkpoint_path,
+                    import_structure=True,
+                    import_embeddings=True,
+                    import_metrics=True
+                )
             
-            logger.info(f"Checkpoint loaded successfully from {checkpoint_path}: {import_result}")
-            return True, f"Checkpoint loaded successfully from {checkpoint_path}: {import_result}"
+            logger.info(f"Checkpoint loaded successfully from {checkpoint_path}")
+            return True, f"Checkpoint loaded successfully from {checkpoint_path}"
             
         except Exception as e:
             logger.error(f"Failed to load checkpoint: {e}")
