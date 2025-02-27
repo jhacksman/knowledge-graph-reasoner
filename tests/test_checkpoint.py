@@ -25,7 +25,12 @@ def checkpoint_dir():
 
 @pytest.fixture
 def mock_graph_manager():
-    """Create a mock graph manager."""
+    """Create a mock graph manager with default size."""
+    return create_mock_graph_manager(nodes=10, edges=20, embeddings=10, metrics=5)
+
+
+def create_mock_graph_manager(nodes=10, edges=20, embeddings=10, metrics=5):
+    """Helper function to create a mock graph manager with specified sizes."""
     manager = MagicMock(spec=GraphManager)
     
     # Mock export methods
@@ -34,8 +39,8 @@ def mock_graph_manager():
         return Path(path)
     
     async def mock_export_embeddings(path, compress=True):
-        Path(f"{path}.gz").touch()
-        return Path(f"{path}.gz")
+        Path(f"{path}.gz" if compress else path).touch()
+        return Path(f"{path}.gz" if compress else path)
     
     async def mock_export_metrics_history(path):
         Path(path).touch()
@@ -44,36 +49,67 @@ def mock_graph_manager():
     async def mock_export_full_graph(directory, compress=True, include_embeddings=True, include_metrics=True):
         Path(directory).mkdir(exist_ok=True)
         structure_path = Path(directory) / "graph_structure.json"
-        embeddings_path = Path(directory) / "embeddings.pkl.gz"
+        embeddings_path = Path(directory) / ("embeddings.pkl.gz" if compress else "embeddings.pkl")
         metrics_path = Path(directory) / "metrics_history.json"
         
         structure_path.touch()
-        embeddings_path.touch()
-        metrics_path.touch()
+        if include_embeddings:
+            embeddings_path.touch()
+        if include_metrics:
+            metrics_path.touch()
         
-        return {
-            "structure": structure_path,
-            "embeddings": embeddings_path,
-            "metrics": metrics_path
-        }
+        result = {"structure": structure_path}
+        if include_embeddings:
+            result["embeddings"] = embeddings_path
+        if include_metrics:
+            result["metrics"] = metrics_path
+            
+        return result
     
     # Mock import methods
     async def mock_import_graph_structure(path):
-        return 10, 20  # 10 nodes, 20 edges
+        return nodes, edges  # nodes, edges
     
     async def mock_import_embeddings(path):
-        return 10  # 10 embeddings
+        return embeddings  # embeddings
     
     async def mock_import_metrics_history(path):
-        return 5  # 5 metrics
+        return metrics  # metrics
     
     async def mock_import_full_graph(directory, import_structure=True, import_embeddings=True, import_metrics=True):
-        return {
-            "nodes": 10,
-            "edges": 20,
-            "embeddings": 10,
-            "metrics": 5
-        }
+        result = {}
+        if import_structure:
+            result["nodes"] = nodes
+            result["edges"] = edges
+        if import_embeddings:
+            result["embeddings"] = embeddings
+        if import_metrics:
+            result["metrics"] = metrics
+        return result
+    
+    # Mock streaming methods
+    async def mock_get_nodes_stream(chunk_size=1000):
+        """Mock streaming nodes in chunks."""
+        from src.models.node import Node
+        import math
+        
+        chunks = math.ceil(nodes / chunk_size)
+        for i in range(chunks):
+            chunk_size_actual = min(chunk_size, nodes - i * chunk_size)
+            yield [Node(id=f"node{j}", content=f"Node {j}", metadata={}) 
+                  for j in range(i * chunk_size, i * chunk_size + chunk_size_actual)]
+    
+    async def mock_get_edges_stream(chunk_size=1000):
+        """Mock streaming edges in chunks."""
+        from src.models.edge import Edge
+        import math
+        
+        chunks = math.ceil(edges / chunk_size)
+        for i in range(chunks):
+            chunk_size_actual = min(chunk_size, edges - i * chunk_size)
+            yield [Edge(source=f"node{j % nodes}", target=f"node{(j + 1) % nodes}", 
+                       type="related", metadata={}) 
+                  for j in range(i * chunk_size, i * chunk_size + chunk_size_actual)]
     
     # Assign mock methods
     manager.export_graph_structure.side_effect = mock_export_graph_structure
@@ -84,8 +120,28 @@ def mock_graph_manager():
     manager.import_embeddings.side_effect = mock_import_embeddings
     manager.import_metrics_history.side_effect = mock_import_metrics_history
     manager.import_full_graph.side_effect = mock_import_full_graph
+    manager.get_nodes_stream.side_effect = mock_get_nodes_stream
+    manager.get_edges_stream.side_effect = mock_get_edges_stream
     
     return manager
+
+
+@pytest.fixture
+def small_graph_manager():
+    """Create a mock graph manager with a small graph (5 nodes, 8 edges)."""
+    return create_mock_graph_manager(nodes=5, edges=8, embeddings=5, metrics=3)
+
+
+@pytest.fixture
+def medium_graph_manager():
+    """Create a mock graph manager with a medium graph (50 nodes, 100 edges)."""
+    return create_mock_graph_manager(nodes=50, edges=100, embeddings=50, metrics=10)
+
+
+@pytest.fixture
+def large_graph_manager():
+    """Create a mock graph manager with a large graph (500 nodes, 1000 edges)."""
+    return create_mock_graph_manager(nodes=500, edges=1000, embeddings=500, metrics=20)
 
 
 @pytest.fixture
@@ -114,6 +170,57 @@ def mock_llm():
 
 class TestCheckpointManager:
     """Tests for CheckpointManager."""
+    
+    @pytest.mark.asyncio
+    async def test_checkpoint_with_different_graph_sizes(self, checkpoint_dir, small_graph_manager, medium_graph_manager, large_graph_manager):
+        """Test checkpoint creation and loading with different graph sizes."""
+        config = {"test": "config"}
+        
+        # Test with small graph
+        small_manager = CheckpointManager(
+            base_dir=checkpoint_dir / "small",
+            graph_manager=small_graph_manager,
+            config=config
+        )
+        small_checkpoint = await small_manager.create_checkpoint(
+            iteration=1,
+            description="Small graph checkpoint"
+        )
+        assert small_checkpoint.exists()
+        
+        # Test with medium graph
+        medium_manager = CheckpointManager(
+            base_dir=checkpoint_dir / "medium",
+            graph_manager=medium_graph_manager,
+            config=config
+        )
+        medium_checkpoint = await medium_manager.create_checkpoint(
+            iteration=1,
+            description="Medium graph checkpoint"
+        )
+        assert medium_checkpoint.exists()
+        
+        # Test with large graph
+        large_manager = CheckpointManager(
+            base_dir=checkpoint_dir / "large",
+            graph_manager=large_graph_manager,
+            config=config
+        )
+        large_checkpoint = await large_manager.create_checkpoint(
+            iteration=1,
+            description="Large graph checkpoint"
+        )
+        assert large_checkpoint.exists()
+        
+        # Verify each checkpoint can be loaded
+        small_success, _ = await small_manager.load_checkpoint(small_checkpoint)
+        assert small_success
+        
+        medium_success, _ = await medium_manager.load_checkpoint(medium_checkpoint)
+        assert medium_success
+        
+        large_success, _ = await large_manager.load_checkpoint(large_checkpoint)
+        assert large_success
     
     @pytest.mark.asyncio
     async def test_create_checkpoint(self, checkpoint_dir, mock_graph_manager):
@@ -339,6 +446,87 @@ class TestCheckpointManager:
     
     @pytest.mark.asyncio
     async def test_serialization_deserialization(self, checkpoint_dir, mock_graph_manager):
+        """Test serialization and deserialization of graph state."""
+        config = {"test": "config"}
+        manager = CheckpointManager(
+            base_dir=checkpoint_dir,
+            graph_manager=mock_graph_manager,
+            config=config
+        )
+        
+        # Create checkpoint
+        checkpoint_path = await manager.create_checkpoint(
+            iteration=1,
+            description="Test serialization"
+        )
+        
+        # Check that graph manager export methods were called
+        mock_graph_manager.export_graph_structure.assert_called_once()
+        mock_graph_manager.export_embeddings.assert_called_once()
+        mock_graph_manager.export_metrics_history.assert_called_once()
+        
+        # Load checkpoint
+        success, message = await manager.load_checkpoint(checkpoint_path)
+        assert success
+        
+        # Check that graph manager import methods were called
+        mock_graph_manager.import_full_graph.assert_called_once()
+        
+        # Check import arguments
+        args, kwargs = mock_graph_manager.import_full_graph.call_args
+        assert kwargs["import_structure"] is True
+        assert kwargs["import_embeddings"] is True
+        assert kwargs["import_metrics"] is True
+        
+    @pytest.mark.asyncio
+    async def test_incremental_checkpoint_with_different_sizes(self, checkpoint_dir, small_graph_manager, medium_graph_manager):
+        """Test incremental checkpoint creation and loading with different graph sizes."""
+        config = {"test": "config"}
+        
+        # Create base checkpoint with small graph
+        small_manager = CheckpointManager(
+            base_dir=checkpoint_dir / "incremental_small",
+            graph_manager=small_graph_manager,
+            config=config
+        )
+        base_checkpoint = await small_manager.create_checkpoint(
+            iteration=1,
+            description="Base checkpoint with small graph"
+        )
+        assert base_checkpoint.exists()
+        
+        # Create incremental checkpoint with medium graph
+        medium_manager = CheckpointManager(
+            base_dir=checkpoint_dir / "incremental_medium",
+            graph_manager=medium_graph_manager,
+            config=config
+        )
+        
+        # Create incremental checkpoint
+        incremental_checkpoint = await medium_manager.create_incremental_checkpoint(
+            iteration=2,
+            description="Incremental checkpoint with medium graph"
+        )
+        
+        # Add base checkpoint reference to metadata
+        metadata_path = incremental_checkpoint / "metadata.json"
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        
+        # Update metadata with base checkpoint reference
+        metadata["base_checkpoint"] = str(base_checkpoint)
+        
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f)
+        assert incremental_checkpoint.exists()
+        
+        # Verify metadata contains incremental flag
+        metadata_path = incremental_checkpoint / "metadata.json"
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        
+        assert metadata["incremental"] is True
+        assert metadata["base_checkpoint"] == str(base_checkpoint)
         """Test serialization and deserialization of graph state."""
         config = {"test": "config"}
         manager = CheckpointManager(
