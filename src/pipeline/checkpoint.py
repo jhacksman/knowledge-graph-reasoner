@@ -581,11 +581,15 @@ class CheckpointManager:
                 shutil.rmtree(checkpoint_path)
             raise
             
-    async def load_checkpoint(self, checkpoint_path: Union[str, Path]) -> Tuple[bool, str]:
+    async def load_checkpoint(self, checkpoint_path: Union[str, Path], 
+                           allow_partial: bool = True, 
+                           force_full_import: bool = False) -> Tuple[bool, str]:
         """Load checkpoint and restore graph state.
         
         Args:
             checkpoint_path: Path to checkpoint directory
+            allow_partial: Whether to allow partial state recovery on failure
+            force_full_import: Whether to force full import even for incremental checkpoints
             
         Returns:
             Tuple[bool, str]: Success flag and message
@@ -601,66 +605,229 @@ class CheckpointManager:
             # Validate checkpoint first
             valid, message = await self.validate_checkpoint(checkpoint_path)
             if not valid:
+                logger.warning(f"Checkpoint validation failed: {message}")
+                if allow_partial:
+                    return await self._attempt_partial_recovery(checkpoint_path)
                 return False, message
             
             # Load metadata
             metadata_path = checkpoint_path / "metadata.json"
-            with open(metadata_path, "r") as f:
-                metadata_dict = json.load(f)
-            
-            metadata = CheckpointMetadata.from_dict(metadata_dict)
+            try:
+                with open(metadata_path, "r") as f:
+                    metadata_dict = json.load(f)
+                
+                metadata = CheckpointMetadata.from_dict(metadata_dict)
+            except (json.JSONDecodeError, KeyError, FileNotFoundError) as e:
+                logger.error(f"Failed to parse metadata: {e}")
+                if allow_partial:
+                    return await self._attempt_partial_recovery(checkpoint_path)
+                return False, f"Failed to parse metadata: {e}"
             
             # Handle version compatibility
             if metadata.version != "1.0.0":
-                # Apply version-specific transformations if needed
-                await self._handle_version_compatibility(checkpoint_path, metadata.version)
+                try:
+                    # Apply version-specific transformations if needed
+                    await self._handle_version_compatibility(checkpoint_path, metadata.version)
+                except Exception as e:
+                    logger.error(f"Version compatibility handling failed: {e}")
+                    if allow_partial:
+                        return await self._attempt_partial_recovery(checkpoint_path)
+                    return False, f"Version compatibility handling failed: {e}"
             
-            # Check if this is an incremental checkpoint
-            if metadata.incremental:
-                # Load base checkpoint first
-                base_path_file = checkpoint_path / "base_checkpoint.txt"
-                if base_path_file.exists():
+            # Check if this is an incremental checkpoint and not forcing full import
+            if metadata.incremental and not force_full_import:
+                try:
+                    # Load base checkpoint first
+                    base_path_file = checkpoint_path / "base_checkpoint.txt"
+                    if not base_path_file.exists():
+                        logger.error("Base checkpoint reference not found in incremental checkpoint")
+                        if allow_partial:
+                            return await self._attempt_partial_recovery(checkpoint_path)
+                        return False, "Base checkpoint reference not found in incremental checkpoint"
+                    
                     with open(base_path_file, "r") as f:
-                        base_path = Path(f.read().strip())
+                        base_path_str = f.read().strip()
+                    
+                    base_path = Path(base_path_str)
+                    if not base_path.exists():
+                        logger.error(f"Base checkpoint not found at {base_path}")
+                        if allow_partial:
+                            # Try to load just the changes without base
+                            return await self._load_incremental_changes_only(checkpoint_path)
+                        return False, f"Base checkpoint not found at {base_path}"
                     
                     # Load base checkpoint
-                    base_success, base_message = await self.load_checkpoint(base_path)
+                    base_success, base_message = await self.load_checkpoint(
+                        base_path, 
+                        allow_partial=allow_partial,
+                        force_full_import=force_full_import
+                    )
+                    
                     if not base_success:
                         logger.warning(f"Failed to load base checkpoint: {base_message}")
+                        if allow_partial:
+                            # Try to load just the changes without base
+                            return await self._load_incremental_changes_only(checkpoint_path)
+                        return False, f"Failed to load base checkpoint: {base_message}"
                     
                     # Apply changes
                     changes_path = checkpoint_path / "changes.json"
-                    if changes_path.exists():
+                    if not changes_path.exists():
+                        logger.error("Changes file not found in incremental checkpoint")
+                        return True, f"Base checkpoint loaded but changes file not found: {base_path}"
+                    
+                    try:
                         with open(changes_path, "r") as f:
                             changes = json.load(f)
                         
                         # Apply changes to graph
-                        await self.graph_manager.apply_changes(changes)
-                    else:
-                        return False, "Changes file not found in incremental checkpoint"
-                else:
-                    return False, "Base checkpoint reference not found in incremental checkpoint"
+                        result = await self.graph_manager.apply_changes(changes)
+                        logger.info(f"Applied changes: {result['nodes']} nodes, {result['edges']} edges")
+                    except (json.JSONDecodeError, KeyError) as e:
+                        logger.error(f"Failed to parse or apply changes: {e}")
+                        return True, f"Base checkpoint loaded but failed to apply changes: {e}"
+                    
+                except Exception as e:
+                    logger.error(f"Failed to load incremental checkpoint: {e}")
+                    if allow_partial:
+                        return await self._attempt_partial_recovery(checkpoint_path)
+                    return False, f"Failed to load incremental checkpoint: {e}"
             else:
                 # Import full graph from checkpoint
-                import_result = await self.graph_manager.import_full_graph(
-                    directory=checkpoint_path,
-                    import_structure=True,
-                    import_embeddings=True,
-                    import_metrics=True
-                )
+                try:
+                    # Check if required files exist before attempting import
+                    structure_path = checkpoint_path / "graph_structure.json"
+                    structure_gz_path = checkpoint_path / "graph_structure.json.gz"
+                    
+                    if not structure_path.exists() and not structure_gz_path.exists():
+                        logger.error("Graph structure file not found")
+                        if allow_partial:
+                            return await self._attempt_partial_recovery(checkpoint_path)
+                        return False, "Graph structure file not found"
+                    
+                    import_result = await self.graph_manager.import_full_graph(
+                        directory=checkpoint_path,
+                        import_structure=True,
+                        import_embeddings=True,
+                        import_metrics=True
+                    )
+                    
+                    logger.info(f"Full graph import result: {import_result}")
+                except Exception as e:
+                    logger.error(f"Failed to import full graph: {e}")
+                    if allow_partial:
+                        return await self._attempt_partial_recovery(checkpoint_path)
+                    return False, f"Failed to import full graph: {e}"
             
             logger.info(f"Checkpoint loaded successfully from {checkpoint_path}")
             return True, f"Checkpoint loaded successfully from {checkpoint_path}"
             
         except Exception as e:
             logger.error(f"Failed to load checkpoint: {e}")
+            if allow_partial:
+                return await self._attempt_partial_recovery(checkpoint_path)
             return False, f"Failed to load checkpoint: {e}"
+            
+    async def _attempt_partial_recovery(self, checkpoint_path: Path) -> Tuple[bool, str]:
+        """Attempt to recover partial state from a checkpoint.
+        
+        Args:
+            checkpoint_path: Path to checkpoint directory
+            
+        Returns:
+            Tuple[bool, str]: Success flag and message
+        """
+        logger.info(f"Attempting partial recovery from {checkpoint_path}")
+        
+        try:
+            # Try to import just the graph structure if available
+            structure_path = checkpoint_path / "graph_structure.json"
+            structure_gz_path = checkpoint_path / "graph_structure.json.gz"
+            
+            if structure_path.exists() or structure_gz_path.exists():
+                try:
+                    await self.graph_manager.import_graph_structure(
+                        structure_path if structure_path.exists() else structure_gz_path
+                    )
+                    logger.info("Recovered graph structure")
+                    
+                    # Try to import embeddings if available
+                    embeddings_path = checkpoint_path / "embeddings.pkl"
+                    embeddings_gz_path = checkpoint_path / "embeddings.pkl.gz"
+                    
+                    if embeddings_path.exists() or embeddings_gz_path.exists():
+                        try:
+                            await self.graph_manager.import_embeddings(
+                                embeddings_path if embeddings_path.exists() else embeddings_gz_path
+                            )
+                            logger.info("Recovered embeddings")
+                        except Exception as e:
+                            logger.warning(f"Failed to recover embeddings: {e}")
+                    
+                    # Try to import metrics if available
+                    metrics_path = checkpoint_path / "metrics.json"
+                    metrics_gz_path = checkpoint_path / "metrics.json.gz"
+                    
+                    if metrics_path.exists() or metrics_gz_path.exists():
+                        try:
+                            await self.graph_manager.import_metrics_history(
+                                metrics_path if metrics_path.exists() else metrics_gz_path
+                            )
+                            logger.info("Recovered metrics history")
+                        except Exception as e:
+                            logger.warning(f"Failed to recover metrics history: {e}")
+                    
+                    return True, f"Partial recovery successful from {checkpoint_path}"
+                except Exception as e:
+                    logger.error(f"Failed to recover graph structure: {e}")
+            
+            # If we're here, we couldn't recover anything
+            return False, f"Failed to recover any state from {checkpoint_path}"
+            
+        except Exception as e:
+            logger.error(f"Failed to attempt partial recovery: {e}")
+            return False, f"Failed to attempt partial recovery: {e}"
+            
+    async def _load_incremental_changes_only(self, checkpoint_path: Path) -> Tuple[bool, str]:
+        """Load only the changes from an incremental checkpoint.
+        
+        Args:
+            checkpoint_path: Path to checkpoint directory
+            
+        Returns:
+            Tuple[bool, str]: Success flag and message
+        """
+        logger.info(f"Attempting to load only changes from incremental checkpoint {checkpoint_path}")
+        
+        try:
+            changes_path = checkpoint_path / "changes.json"
+            if not changes_path.exists():
+                return False, "Changes file not found in incremental checkpoint"
+            
+            try:
+                with open(changes_path, "r") as f:
+                    changes = json.load(f)
+                
+                # Apply changes to graph
+                result = await self.graph_manager.apply_changes(changes)
+                logger.info(f"Applied changes without base checkpoint: {result['nodes']} nodes, {result['edges']} edges")
+                
+                return True, f"Loaded changes only from {checkpoint_path}"
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.error(f"Failed to parse or apply changes: {e}")
+                return False, f"Failed to parse or apply changes: {e}"
+            
+        except Exception as e:
+            logger.error(f"Failed to load incremental changes: {e}")
+            return False, f"Failed to load incremental changes: {e}"
     
-    async def validate_checkpoint(self, checkpoint_path: Union[str, Path]) -> Tuple[bool, str]:
+    async def validate_checkpoint(self, checkpoint_path: Union[str, Path], 
+                              strict: bool = True) -> Tuple[bool, str]:
         """Validate checkpoint integrity.
         
         Args:
             checkpoint_path: Path to checkpoint directory
+            strict: Whether to perform strict validation (fail on any issue)
             
         Returns:
             Tuple[bool, str]: Validation result and message
@@ -677,52 +844,183 @@ class CheckpointManager:
                 return False, f"Metadata not found in checkpoint: {checkpoint_path}"
             
             # Load metadata
-            with open(metadata_path, "r") as f:
-                metadata_dict = json.load(f)
-            
-            metadata = CheckpointMetadata.from_dict(metadata_dict)
+            try:
+                with open(metadata_path, "r") as f:
+                    metadata_dict = json.load(f)
+                
+                metadata = CheckpointMetadata.from_dict(metadata_dict)
+            except json.JSONDecodeError as e:
+                return False, f"Invalid metadata JSON format: {e}"
+            except KeyError as e:
+                return False, f"Missing required field in metadata: {e}"
+            except Exception as e:
+                return False, f"Failed to parse metadata: {e}"
             
             # Version compatibility check
             current_version = "1.0.0"  # Current checkpoint format version
             if metadata.version != current_version:
                 # Handle version differences
                 logger.warning(f"Checkpoint version mismatch: {metadata.version} vs {current_version}")
-                # For now, we'll just warn but continue - in a real implementation,
-                # you would implement version-specific loading logic here
                 
                 # Check if the version is compatible (major version must match)
-                checkpoint_major = metadata.version.split(".")[0]
-                current_major = current_version.split(".")[0]
-                if checkpoint_major != current_major:
-                    return False, f"Incompatible checkpoint version: {metadata.version} (current: {current_version})"
+                try:
+                    checkpoint_major = metadata.version.split(".")[0]
+                    current_major = current_version.split(".")[0]
+                    if checkpoint_major != current_major:
+                        return False, f"Incompatible checkpoint version: {metadata.version} (current: {current_version})"
+                except Exception as e:
+                    return False, f"Failed to parse version: {e}"
             
             # Verify checksum if available
             if metadata.checksum:
-                calculated_checksum = await self._calculate_checksum(checkpoint_path)
-                if calculated_checksum != metadata.checksum:
-                    return False, f"Checkpoint integrity check failed: {checkpoint_path}"
+                try:
+                    calculated_checksum = await self._calculate_checksum(checkpoint_path)
+                    if calculated_checksum != metadata.checksum:
+                        error_msg = f"Checkpoint integrity check failed: {checkpoint_path}"
+                        if strict:
+                            return False, error_msg
+                        else:
+                            logger.warning(error_msg)
+                except Exception as e:
+                    error_msg = f"Failed to calculate checksum: {e}"
+                    if strict:
+                        return False, error_msg
+                    else:
+                        logger.warning(error_msg)
             
-            # Check if required files exist
-            required_files = [
-                "graph_structure.json",
-                "metrics.json"
-            ]
-            
-            # Check for embeddings file (compressed or uncompressed)
-            if not (checkpoint_path / "embeddings.pkl").exists() and not (checkpoint_path / "embeddings.pkl.gz").exists():
-                return False, f"Embeddings file not found in checkpoint: {checkpoint_path}"
-            
-            for file in required_files:
-                if not (checkpoint_path / file).exists():
-                    return False, f"Required file not found in checkpoint: {file}"
-            
-            # Validate graph consistency (no dangling edges)
-            graph_consistency_result = await self._validate_graph_consistency(checkpoint_path)
-            if not graph_consistency_result[0]:
-                return graph_consistency_result
-            
-            return True, f"Checkpoint validation successful: {checkpoint_path}"
+            # Check if this is an incremental checkpoint
+            if metadata.incremental:
+                # Validate incremental checkpoint
+                return await self._validate_incremental_checkpoint(checkpoint_path, metadata, strict)
+            else:
+                # Validate full checkpoint
+                return await self._validate_full_checkpoint(checkpoint_path, strict)
             
         except Exception as e:
             logger.error(f"Failed to validate checkpoint: {e}")
             return False, f"Failed to validate checkpoint: {e}"
+            
+    async def _validate_incremental_checkpoint(self, checkpoint_path: Path, 
+                                             metadata: CheckpointMetadata,
+                                             strict: bool = True) -> Tuple[bool, str]:
+        """Validate incremental checkpoint.
+        
+        Args:
+            checkpoint_path: Path to checkpoint directory
+            metadata: Checkpoint metadata
+            strict: Whether to perform strict validation
+            
+        Returns:
+            Tuple[bool, str]: Validation result and message
+        """
+        # Check for base checkpoint reference
+        base_path_file = checkpoint_path / "base_checkpoint.txt"
+        if not base_path_file.exists():
+            return False, f"Base checkpoint reference not found in incremental checkpoint: {checkpoint_path}"
+        
+        # Check for changes file
+        changes_path = checkpoint_path / "changes.json"
+        if not changes_path.exists():
+            return False, f"Changes file not found in incremental checkpoint: {checkpoint_path}"
+        
+        # Validate changes file format
+        try:
+            with open(changes_path, "r") as f:
+                changes = json.load(f)
+            
+            # Check if changes has required fields
+            if "nodes" not in changes or "edges" not in changes:
+                return False, f"Invalid changes format: missing nodes or edges in {changes_path}"
+            
+            # Check if nodes and edges are lists
+            if not isinstance(changes["nodes"], list) or not isinstance(changes["edges"], list):
+                return False, f"Invalid changes format: nodes and edges must be lists in {changes_path}"
+            
+        except json.JSONDecodeError as e:
+            return False, f"Invalid changes JSON format: {e}"
+        except Exception as e:
+            return False, f"Failed to validate changes file: {e}"
+        
+        # Check if base checkpoint exists
+        try:
+            with open(base_path_file, "r") as f:
+                base_path_str = f.read().strip()
+            
+            base_path = Path(base_path_str)
+            if not base_path.exists():
+                error_msg = f"Base checkpoint not found at {base_path}"
+                if strict:
+                    return False, error_msg
+                else:
+                    logger.warning(error_msg)
+        except Exception as e:
+            error_msg = f"Failed to read base checkpoint reference: {e}"
+            if strict:
+                return False, error_msg
+            else:
+                logger.warning(error_msg)
+        
+        # Check for metrics file (compressed or uncompressed)
+        metrics_path = checkpoint_path / "metrics.json"
+        metrics_gz_path = checkpoint_path / "metrics.json.gz"
+        if not metrics_path.exists() and not metrics_gz_path.exists():
+            error_msg = f"Metrics file not found in checkpoint: {checkpoint_path}"
+            if strict:
+                return False, error_msg
+            else:
+                logger.warning(error_msg)
+        
+        return True, f"Incremental checkpoint validation successful: {checkpoint_path}"
+        
+    async def _validate_full_checkpoint(self, checkpoint_path: Path, 
+                                      strict: bool = True) -> Tuple[bool, str]:
+        """Validate full checkpoint.
+        
+        Args:
+            checkpoint_path: Path to checkpoint directory
+            strict: Whether to perform strict validation
+            
+        Returns:
+            Tuple[bool, str]: Validation result and message
+        """
+        # Check if required files exist
+        required_files = []
+        
+        # Check for graph structure file (compressed or uncompressed)
+        structure_path = checkpoint_path / "graph_structure.json"
+        structure_gz_path = checkpoint_path / "graph_structure.json.gz"
+        if not structure_path.exists() and not structure_gz_path.exists():
+            return False, f"Graph structure file not found in checkpoint: {checkpoint_path}"
+        
+        # Check for embeddings file (compressed or uncompressed)
+        embeddings_path = checkpoint_path / "embeddings.pkl"
+        embeddings_gz_path = checkpoint_path / "embeddings.pkl.gz"
+        if not embeddings_path.exists() and not embeddings_gz_path.exists():
+            return False, f"Embeddings file not found in checkpoint: {checkpoint_path}"
+        
+        # Check for metrics file (compressed or uncompressed)
+        metrics_path = checkpoint_path / "metrics.json"
+        metrics_gz_path = checkpoint_path / "metrics.json.gz"
+        if not metrics_path.exists() and not metrics_gz_path.exists():
+            error_msg = f"Metrics file not found in checkpoint: {checkpoint_path}"
+            if strict:
+                return False, error_msg
+            else:
+                logger.warning(error_msg)
+        
+        # Validate graph consistency (no dangling edges)
+        try:
+            graph_consistency_result = await self._validate_graph_consistency(checkpoint_path)
+            if not graph_consistency_result[0]:
+                if strict:
+                    return graph_consistency_result
+                else:
+                    logger.warning(f"Graph consistency check failed: {graph_consistency_result[1]}")
+        except Exception as e:
+            error_msg = f"Failed to validate graph consistency: {e}"
+            if strict:
+                return False, error_msg
+            else:
+                logger.warning(error_msg)
+        
+        return True, f"Full checkpoint validation successful: {checkpoint_path}"
