@@ -10,20 +10,60 @@ from ..utils.rate_limiter import RateLimiter, RateLimitConfig, TokenCounter
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class RateLimitedVeniceLLMConfig(VeniceLLMConfig):
     """Configuration for rate-limited Venice.ai LLM client."""
     
-    calls_per_minute: int = 15
-    calls_per_day: int = 10000
-    tokens_per_minute: int = 200000
-    burst_limit: int = 5
-    retry_interval: float = 1.0
-    max_retries: int = 5
-    jitter_factor: float = 0.1
-    storage_path: str = ".rate_limit_storage.db"
-    queue_size: int = 100
-    non_urgent_timeout: float = 60.0
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "deepseek-r1-671b",
+        base_url: str = "https://api.venice.ai/api/v1",
+        max_retries: int = 3,
+        timeout: int = 30,
+        calls_per_minute: int = 15,
+        calls_per_day: int = 10000,
+        tokens_per_minute: int = 200000,
+        burst_limit: int = 5,
+        retry_interval: float = 1.0,
+        jitter_factor: float = 0.1,
+        storage_path: str = ".rate_limit_storage.db",
+        queue_size: int = 100,
+        non_urgent_timeout: float = 60.0
+    ):
+        """Initialize rate-limited LLM config.
+        
+        Args:
+            api_key: Venice.ai API key
+            model: Model name to use
+            base_url: Base API URL
+            max_retries: Maximum number of retries
+            timeout: Request timeout in seconds
+            calls_per_minute: Maximum API calls per minute
+            calls_per_day: Maximum API calls per day
+            tokens_per_minute: Maximum tokens per minute
+            burst_limit: Maximum burst limit for API calls
+            retry_interval: Retry interval in seconds
+            jitter_factor: Jitter factor for retry interval
+            storage_path: Path to rate limit storage
+            queue_size: Maximum queue size for non-urgent requests
+            non_urgent_timeout: Timeout for non-urgent requests
+        """
+        super().__init__(
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+            max_retries=max_retries,
+            timeout=timeout
+        )
+        self.calls_per_minute = calls_per_minute
+        self.calls_per_day = calls_per_day
+        self.tokens_per_minute = tokens_per_minute
+        self.burst_limit = burst_limit
+        self.retry_interval = retry_interval
+        self.jitter_factor = jitter_factor
+        self.storage_path = storage_path
+        self.queue_size = queue_size
+        self.non_urgent_timeout = non_urgent_timeout
 
 
 class RateLimitedVeniceLLM(VeniceLLM):

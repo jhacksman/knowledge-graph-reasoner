@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from src.reasoning.llm_factory import create_llm
 from src.reasoning.llm import VeniceLLM
-from src.reasoning.rate_limited_llm import RateLimitedVeniceLLM
+from src.reasoning.rate_limited_llm import RateLimitedVeniceLLM, RateLimitedVeniceLLMConfig
 
 
 class TestLLMFactory:
@@ -30,9 +30,13 @@ class TestLLMFactory:
             # Check config
             assert llm.config.api_key == "test_key"
             assert llm.config.model == "test_model"
-            assert llm.config.calls_per_minute == 20
-            assert llm.config.calls_per_day == 5000
-            assert llm.config.tokens_per_minute == 100000
+            
+            # Check rate limiting config
+            assert isinstance(llm.config, RateLimitedVeniceLLMConfig)
+            rate_limited_config = llm.config
+            assert rate_limited_config.calls_per_minute == 20
+            assert rate_limited_config.calls_per_day == 5000
+            assert rate_limited_config.tokens_per_minute == 100000
     
     def test_create_llm_without_rate_limiting(self):
         """Test creating LLM without rate limiting."""
