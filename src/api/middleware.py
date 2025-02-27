@@ -115,7 +115,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         # Skip rate limiting for certain paths
         if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
-            return await call_next(request)
+            return cast(Response, await call_next(request))
         
         # Get client ID from API key or IP address
         client_id = self._get_client_id(request)
@@ -135,7 +135,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             await self.rate_limiter.check_rate_limit(client_id, minute_limit, day_limit)
             
             # Process the request
-            response = await call_next(request)
+            response = cast(Response, await call_next(request))
             
             # Add rate limit headers
             response.headers["X-RateLimit-Limit-Minute"] = str(minute_limit)
@@ -168,7 +168,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Try to get from API key
         api_key = request.headers.get("X-API-Key")
         if api_key and hasattr(request.state, "api_key_data"):
-            return request.state.api_key_data.client_id
+            return str(request.state.api_key_data.client_id)
         
         # Fall back to IP address
         client_host = request.client.host if request.client else "unknown"
@@ -188,7 +188,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Try to get from API key
         api_key = request.headers.get("X-API-Key")
         if api_key and hasattr(request.state, "api_key_data"):
-            return request.state.api_key_data.client_id
+            return str(request.state.api_key_data.client_id)
         
         # Fall back to IP address
         client_host = request.client.host if request.client else "unknown"
@@ -205,7 +205,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         
         # Process request and handle exceptions
         try:
-            response = await call_next(request)
+            response = cast(Response, await call_next(request))
             
             # Log response
             duration = time.time() - start_time

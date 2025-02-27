@@ -126,7 +126,9 @@ class GraphMetrics:
                 return {list(self.graph.nodes())[0]: 1.0}
             
             # Use eigenvector centrality as hub measure
-            return nx.eigenvector_centrality(self.graph)
+            # Convert to Dict[str, float] to match return type
+            centrality = nx.eigenvector_centrality(self.graph)
+            return {str(node): float(score) for node, score in centrality.items()}
         except Exception as e:
             log.error(f"Failed to compute hub centrality: {e}")
             return {}
