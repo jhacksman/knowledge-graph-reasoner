@@ -258,7 +258,7 @@ class CheckpointManager:
                 async for nodes_chunk in self.graph_manager.get_nodes_stream(chunk_size):
                     if node_count > 0:
                         f.write(',')
-                    f.write(','.join([json.dumps(node.to_dict()) for node in nodes_chunk]))
+                    f.write(','.join([json.dumps(node.dict()) for node in nodes_chunk]))
                     node_count += len(nodes_chunk)
                 
                 f.write('], "edges": [')
@@ -268,7 +268,7 @@ class CheckpointManager:
                 async for edges_chunk in self.graph_manager.get_edges_stream(chunk_size):
                     if edge_count > 0:
                         f.write(',')
-                    f.write(','.join([json.dumps(edge.to_dict()) for edge in edges_chunk]))
+                    f.write(','.join([json.dumps(edge.dict()) for edge in edges_chunk]))
                     edge_count += len(edges_chunk)
                 
                 f.write(']}')
@@ -984,7 +984,7 @@ class CheckpointManager:
             Tuple[bool, str]: Validation result and message
         """
         # Check if required files exist
-        required_files = []
+        required_files: List[Path] = []
         
         # Check for graph structure file (compressed or uncompressed)
         structure_path = checkpoint_path / "graph_structure.json"

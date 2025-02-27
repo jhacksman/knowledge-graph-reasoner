@@ -268,7 +268,8 @@ class TestCheckpointManager:
         assert "Dangling edge" in message
         
         # Restore original method
-        manager._validate_graph_consistency = original_validate
+        # Use setattr instead of direct assignment to avoid "Cannot assign to a method" error
+        setattr(manager, "_validate_graph_consistency", original_validate)
     
     @pytest.mark.asyncio
     async def test_load_checkpoint(self, checkpoint_dir, mock_graph_manager):
@@ -414,7 +415,7 @@ class TestReasoningPipelineCheckpointing:
             return {"test": "state"}
         
         # Replace expand_knowledge with mock
-        pipeline.expand_knowledge = mock_expand
+        setattr(pipeline, "expand_knowledge", mock_expand)
         
         # Expand knowledge
         await pipeline.expand_knowledge("test concept")
@@ -463,7 +464,7 @@ class TestReasoningPipelineCheckpointing:
             async def mock_load_checkpoint(path):
                 return True, f"Successfully loaded checkpoint from {path}"
             
-            pipeline.checkpoint_manager.load_checkpoint = mock_load_checkpoint
+            setattr(pipeline.checkpoint_manager, "load_checkpoint", mock_load_checkpoint)
             
             # Mock list_checkpoints to return metadata with iteration
             original_list = pipeline.checkpoint_manager.list_checkpoints
@@ -478,7 +479,7 @@ class TestReasoningPipelineCheckpointing:
                     }
                 }]
             
-            pipeline.checkpoint_manager.list_checkpoints = mock_list_checkpoints
+            setattr(pipeline.checkpoint_manager, "list_checkpoints", mock_list_checkpoints)
             
             # Replace expand_knowledge with a mock that checks the start_iteration
             original_expand = pipeline.expand_knowledge
@@ -502,16 +503,16 @@ class TestReasoningPipelineCheckpointing:
                 return {"test": "state"}
             
             # Replace expand_knowledge with mock
-            pipeline.expand_knowledge = mock_expand
+            setattr(pipeline, "expand_knowledge", mock_expand)
             
             # Expand knowledge with resume
             await pipeline.expand_knowledge("test concept", resume_from_checkpoint=checkpoint_path)
             
             # Restore original methods
             if pipeline.checkpoint_manager is not None:
-                pipeline.checkpoint_manager.load_checkpoint = original_load
-                pipeline.checkpoint_manager.list_checkpoints = original_list
-            pipeline.expand_knowledge = original_expand
+                setattr(pipeline.checkpoint_manager, "load_checkpoint", original_load)
+                setattr(pipeline.checkpoint_manager, "list_checkpoints", original_list)
+            setattr(pipeline, "expand_knowledge", original_expand)
     
     @pytest.mark.asyncio
     async def test_complete_reasoning_process_with_checkpoints(self, checkpoint_dir, mock_graph_manager, mock_llm):
@@ -537,7 +538,7 @@ class TestReasoningPipelineCheckpointing:
         async def mock_should_checkpoint(iteration):
             return iteration % 2 == 0  # Checkpoint every 2 iterations
         
-        pipeline.checkpoint_manager.should_checkpoint = mock_should_checkpoint
+        setattr(pipeline.checkpoint_manager, "should_checkpoint", mock_should_checkpoint)
         
         # Mock the expand_knowledge method to track checkpoints
         original_expand = pipeline.expand_knowledge
@@ -590,12 +591,12 @@ class TestReasoningPipelineCheckpointing:
             return {"test": "state"}
         
         # Replace methods with mocks
-        pipeline.expand_knowledge = mock_expand
+        setattr(pipeline, "expand_knowledge", mock_expand)
         
         # Run the reasoning process
         await pipeline.expand_knowledge("test concept")
         
         # Restore original methods
         if pipeline.checkpoint_manager is not None:
-            pipeline.checkpoint_manager.should_checkpoint = original_should
-        pipeline.expand_knowledge = original_expand
+            setattr(pipeline.checkpoint_manager, "should_checkpoint", original_should)
+        setattr(pipeline, "expand_knowledge", original_expand)

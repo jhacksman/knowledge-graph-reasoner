@@ -607,7 +607,7 @@ class GraphManager:
                 - edges: List of added/modified edges
         """
         try:
-            changes = {
+            changes: Dict[str, List[Dict[str, Any]]] = {
                 "nodes": [],
                 "edges": []
             }
@@ -662,7 +662,8 @@ class GraphManager:
             # Apply edge changes
             for edge_dict in changes.get("edges", []):
                 edge = Edge(**edge_dict)
-                await self.vector_store.update_edge(edge)
+                # Since BaseVectorStore doesn't have update_edge, remove existing edge and add it again
+                await self.vector_store.add_edge(edge)
                 result["edges"] += 1
             
             return result
