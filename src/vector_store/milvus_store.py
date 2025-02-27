@@ -275,28 +275,25 @@ class MilvusStore(BaseVectorStore):
         Returns:
             AsyncIterator[Node]: All nodes
         """
-        async def _get_all_nodes():
-            await self.initialize()
+        await self.initialize()
+        
+        try:
+            # Query all nodes
+            results = self.client.query(
+                collection_name=f"{self.default_collection}_nodes",
+                filter=None,  # No filter means all nodes
+                output_fields=["*"]
+            )
             
-            try:
-                # Query all nodes
-                results = self.client.query(
-                    collection_name=f"{self.default_collection}_nodes",
-                    filter=None,  # No filter means all nodes
-                    output_fields=["*"]
+            for entity in results:
+                yield Node(
+                    id=entity["id"],
+                    content=entity["content"],
+                    metadata=entity["metadata"]
                 )
-                
-                for entity in results:
-                    yield Node(
-                        id=entity["id"],
-                        content=entity["content"],
-                        metadata=entity["metadata"]
-                    )
-                    await asyncio.sleep(0)  # Allow other coroutines to run
-            except Exception as e:
-                raise MilvusError(f"Failed to get all nodes: {e}")
-                
-        return _get_all_nodes()
+                await asyncio.sleep(0)  # Allow other coroutines to run
+        except Exception as e:
+            raise MilvusError(f"Failed to get all nodes: {e}")
     
     async def get_all_edges(self) -> AsyncIterator[Edge]:
         """Get all edges in the vector store.
@@ -304,26 +301,23 @@ class MilvusStore(BaseVectorStore):
         Returns:
             AsyncIterator[Edge]: All edges
         """
-        async def _get_all_edges():
-            await self.initialize()
+        await self.initialize()
+        
+        try:
+            # Query all edges
+            results = self.client.query(
+                collection_name=f"{self.default_collection}_edges",
+                filter=None,  # No filter means all edges
+                output_fields=["*"]
+            )
             
-            try:
-                # Query all edges
-                results = self.client.query(
-                    collection_name=f"{self.default_collection}_edges",
-                    filter=None,  # No filter means all edges
-                    output_fields=["*"]
+            for entity in results:
+                yield Edge(
+                    source=entity["source"],
+                    target=entity["target"],
+                    type=entity["type"],
+                    metadata=entity["metadata"]
                 )
-                
-                for entity in results:
-                    yield Edge(
-                        source=entity["source"],
-                        target=entity["target"],
-                        type=entity["type"],
-                        metadata=entity["metadata"]
-                    )
-                    await asyncio.sleep(0)  # Allow other coroutines to run
-            except Exception as e:
-                raise MilvusError(f"Failed to get all edges: {e}")
-                
-        return _get_all_edges()
+                await asyncio.sleep(0)  # Allow other coroutines to run
+        except Exception as e:
+            raise MilvusError(f"Failed to get all edges: {e}")
